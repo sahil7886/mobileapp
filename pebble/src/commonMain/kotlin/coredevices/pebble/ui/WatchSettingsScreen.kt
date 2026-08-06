@@ -106,7 +106,6 @@ import com.cactus.isCactusSupported
 import com.russhwolf.settings.Settings
 import com.russhwolf.settings.set
 import coredevices.CoreBackgroundSync
-import coredevices.EnableExperimentalDevices
 import coredevices.analytics.AnalyticsBackend
 import coredevices.analytics.CoreAnalytics
 import coredevices.analytics.setUser
@@ -124,9 +123,7 @@ import coredevices.pebble.ui.SettingsIds.EnableHealthPlatformSync
 import coredevices.pebble.ui.SettingsIds.EnableHealthTracking
 import coredevices.pebble.ui.SettingsIds.EnableSleepInsights
 import coredevices.pebble.ui.SettingsIds.OfflineSpeechRecognition
-import coredevices.pebble.ui.SettingsKeys.KEY_ENABLE_FIREBASE_UPLOADS
 import coredevices.pebble.ui.SettingsKeys.KEY_ENABLE_MEMFAULT_UPLOADS
-import coredevices.pebble.ui.SettingsKeys.KEY_ENABLE_MIXPANEL_UPLOADS
 import coredevices.pebble.weather.WeatherFetcher
 import coredevices.ui.ConfirmDialog
 import coredevices.ui.CoreLinearProgressIndicator
@@ -138,7 +135,7 @@ import coredevices.util.Permission
 import coredevices.util.PermissionRequester
 import coredevices.util.STTConfig
 import coredevices.util.WeatherUnit
-import coredevices.util.emailOrNull
+import coredevices.util.auth.LocalIdentityStore
 import coredevices.util.models.CactusSTTMode
 import coredevices.util.models.ModelDownloadStatus
 import coredevices.util.models.ModelInfo
@@ -147,9 +144,6 @@ import coredevices.util.models.RecommendedModel
 import coredevices.util.rememberUiContext
 import coredevices.util.transcription.PlatformSpeechRecognizer
 import coredevices.util.transcription.SpokenLanguageOptions
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
-import dev.gitlive.firebase.crashlytics.crashlytics
 import io.rebble.libpebblecommon.connection.AppContext
 import io.rebble.libpebblecommon.connection.ConnectedPebble
 import io.rebble.libpebblecommon.connection.KnownPebbleDevice
@@ -160,8 +154,6 @@ import io.rebble.libpebblecommon.metadata.WatchType
 import io.rebble.libpebblecommon.packets.ProtocolCapsFlag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import coreapp.pebble.generated.resources.Res
@@ -331,10 +323,9 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     val pebbleFeatures = koinInject<PebbleFeatures>()
     val pebbleAccount = koinInject<PebbleAccount>()
     val loggedIn by pebbleAccount.loggedIn.collectAsState()
-    val coreUser by Firebase.auth.authStateChanged.map {
-        it?.emailOrNull
-    }.distinctUntilChanged()
-        .collectAsState(Firebase.auth.currentUser?.emailOrNull)
+    val identities: LocalIdentityStore = koinInject()
+    val localIdentity by identities.identity.collectAsState()
+    val coreUser = localIdentity?.email ?: localIdentity?.displayName ?: localIdentity?.subject
     val scope = rememberCoroutineScope()
     val appContext = koinInject<AppContext>()
     val appVersion = koinInject<CoreAppVersion>()
@@ -447,11 +438,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     val missingPermissions by permissionRequester.missingPermissions.collectAsState()
     val uiContext = rememberUiContext()
     val analyticsBackend: AnalyticsBackend = koinInject()
-    val enableFirebase = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_FIREBASE_UPLOADS, true)) }
     val enableMemfault = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)) }
-    val enableMixpanel = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_MIXPANEL_UPLOADS, true)) }
-    val enableExperimentalDevices: EnableExperimentalDevices = koinInject()
-    val experimentalDevices by enableExperimentalDevices.enabled.collectAsState()
     val appUpdateTracker: AppUpdateTracker = koinInject()
     val showChangelogBadge = remember { appUpdateTracker.appWasUpdated.value }
     val hasOfflineModels by produceState(false) {
@@ -494,11 +481,8 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
             debugOptionsEnabled,
             missingPermissions,
             updateState,
-            enableFirebase,
             enableMemfault,
-            enableMixpanel,
             coreConfig,
-            experimentalDevices,
             loggedIn,
             watchPrefs,
             rebbleVoiceAvailable,
@@ -1609,21 +1593,6 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     show = { pebbleFeatures.supportsDetectingOtherPebbleApps() },
                 ),
                 basicSettingsToggleItem(
-                    title = "Send app crashes",
-                    description = "This allows us to fix crashes in the mobile app - otherwise we don't know how often they are happening, or how to fix them",
-                    topLevelType = TopLevelType.Phone,
-                    section = Section.Diagnostics,
-                    checked = enableFirebase.value,
-                    onCheckChanged = {
-                        enableFirebase.value = it
-                        settings.set(KEY_ENABLE_FIREBASE_UPLOADS, it)
-                        if (!it) {
-                            coreAnalytics.logEvent("crashlytics_collection_disabled")
-                        }
-                        Firebase.crashlytics.setCrashlyticsCollectionEnabled(it)
-                    },
-                ),
-                basicSettingsToggleItem(
                     title = "Send watch analytics",
                     description = "Only for Core Devices watches. This allows us to measure metrics e.g. battery life, and debug watch crashes (otherwise we do not know whether they are regressions in reliability or performance)",
                     topLevelType = TopLevelType.Phone,
@@ -1635,21 +1604,6 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                             coreAnalytics.logEvent("memfault_collection_disabled")
                         }
                         settings.set(KEY_ENABLE_MEMFAULT_UPLOADS, it)
-                    },
-                ),
-                basicSettingsToggleItem(
-                    title = "Send app analytics",
-                    description = "This allows us to track metrics e.g. connectivity, so that we can track different types of error and improve reliability",
-                    topLevelType = TopLevelType.Phone,
-                    section = Section.Diagnostics,
-                    checked = enableMixpanel.value,
-                    onCheckChanged = {
-                        enableMixpanel.value = it
-                        settings.set(KEY_ENABLE_MIXPANEL_UPLOADS, it)
-                        if (!it) {
-                            coreAnalytics.logEvent("mixpanel_collection_disabled")
-                        }
-                        analyticsBackend.setEnabled(it)
                     },
                 ),
                 basicSettingsToggleItem(
@@ -1884,27 +1838,22 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     isDebugSetting = true,
                 ),
                 basicSettingsActionItem(
-                    title = "Sign Out - Pebble Account",
-                    description = "Sign out of your Pebble account ($coreUser)",
+                    title = "Sign Out - Apple Identity",
+                    description = "Remove the local Apple identity ($coreUser)",
                     topLevelType = TopLevelType.Phone,
                     section = Section.General,
                     action = {
                         scope.launch {
-                            try {
-                                Firebase.auth.signOut()
-                                libPebble.requestLockerSync()
-                                analyticsBackend.setUser(email = null)
-                                logger.d { "User signed out" }
-                            } catch (e: Exception) {
-                                logger.e(e) { "Failed to sign out" }
-                            }
+                            identities.clear()
+                            analyticsBackend.setUser(email = null)
+                            logger.d { "Local Apple identity cleared" }
                         }
                     },
                     show = { coreUser != null },
                 ),
                 basicSettingsActionItem(
-                    title = "Sign In - Pebble Account",
-                    description = "Sign in to backup your Pebble account to backup apps, settings, etc",
+                    title = "Sign In - Apple Identity",
+                    description = "Identify this app on this iPhone. Apps remain stored locally.",
                     topLevelType = TopLevelType.Phone,
                     section = Section.General,
                     action = { showSignInDialog = true },
@@ -2888,8 +2837,6 @@ expect fun openGoogleFitApp(uiContext: PlatformUiContext?)
 
 object SettingsKeys {
     const val KEY_ENABLE_MEMFAULT_UPLOADS = "enable_memfault_uploads"
-    const val KEY_ENABLE_FIREBASE_UPLOADS = "enable_firebase_uploads"
-    const val KEY_ENABLE_MIXPANEL_UPLOADS = "enable_mixpanel_uploads"
 }
 
 enum class RegularSyncInterval(

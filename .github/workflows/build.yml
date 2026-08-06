@@ -3,35 +3,6 @@ name: Build
 on: [push, pull_request]
 
 jobs:
-  android:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: 17
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Cache build deps
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: android-deps-${{ runner.os }}-${{ hashFiles('gradle/**', 'gradlew*', 'gradle.properties', '*.gradle*') }}
-          restore-keys: |
-            android-deps-${{ runner.os }}-
-      - name: Use dummy google-services json
-        run: mv androidApp/src/google-services-dummy.json androidApp/src/google-services.json
-      - name: Build and Test
-        run: ./gradlew :androidApp:assembleDebug testDebugUnitTest testAndroidHostTest jvmTest lintDebug
-        env:
-          GITHUB_ACTOR: ${{ secrets.READ_PACKAGES_ACTOR }}
-          GITHUB_TOKEN: ${{ secrets.READ_PACKAGES_TOKEN }}
-
   ios:
     runs-on: macos-15
     steps:
@@ -59,8 +30,6 @@ jobs:
           ls /Applications/Xcode*
           swift --version
           sudo xcode-select --switch /Applications/Xcode_26.2.app/Contents/Developer
-      - name: Use dummy google-services json
-        run: mv androidApp/src/google-services-dummy.json androidApp/src/google-services.json
       - name: Build
         run: ./gradlew :composeApp:compileKotlinIosArm64 :libpebble3:linkDebugFrameworkIosArm64
         env:

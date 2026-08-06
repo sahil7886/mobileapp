@@ -11,7 +11,6 @@
 		058557D9273AAEEB004C7B11 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */; };
 		2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB032600AC8F00CF470E /* iOSApp.swift */; };
 		670755B42DC121B600DA5904 /* XMLHTTPRequest.js in Resources */ = {isa = PBXBuildFile; fileRef = 670755B32DC121B600DA5904 /* XMLHTTPRequest.js */; };
-		6707B38B2DF7BF28003519BB /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6707B38A2DF7BF28003519BB /* GoogleService-Info.plist */; };
 		671C01502FFC4F2E00E76758 /* needle-pebble-ft-cq4.zip in Resources */ = {isa = PBXBuildFile; fileRef = 671C014E2FFC4F2E00E76758 /* needle-pebble-ft-cq4.zip */; };
 		67555A962E0212D1006BB488 /* JSTimeout.js in Resources */ = {isa = PBXBuildFile; fileRef = 67555A952E0212D1006BB488 /* JSTimeout.js */; };
 		676C54452D8382FC00E26B6F /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 676C54442D8382FC00E26B6F /* AVFoundation.framework */; };
@@ -31,7 +30,6 @@
 		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		2EB31172B477C48B1FE18840 /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
 		670755B32DC121B600DA5904 /* XMLHTTPRequest.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = XMLHTTPRequest.js; path = ../libpebble3/src/iosMain/kotlin/io/rebble/libpebblecommon/js/XMLHTTPRequest.js; sourceTree = SOURCE_ROOT; };
-		6707B38A2DF7BF28003519BB /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		671C014E2FFC4F2E00E76758 /* needle-pebble-ft-cq4.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "needle-pebble-ft-cq4.zip"; sourceTree = "<group>"; };
 		67555A952E0212D1006BB488 /* JSTimeout.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = JSTimeout.js; path = ../libpebble3/src/iosMain/kotlin/io/rebble/libpebblecommon/js/JSTimeout.js; sourceTree = SOURCE_ROOT; };
 		675E1B9B2E5CB7EE00058C08 /* cactus.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = cactus.xcframework; path = iosApp/cactus.xcframework; sourceTree = "<group>"; };
@@ -41,8 +39,6 @@
 		67CF82A92D63C63B00DE1C7D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		67EA51BF2EF988F7003958BE /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		67F184432D7F650200F47423 /* HaversineSatelliteLibrary.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = HaversineSatelliteLibrary.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		67F184472D7F8B0200F47423 /* FirebaseAuth.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = FirebaseAuth.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		67F1844B2D7F8B1100F47423 /* FirebaseCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = FirebaseCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		7555FF7B242A565900829871 /* Pebble.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Pebble.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7555FF82242A565900829871 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -89,8 +85,6 @@
 			children = (
 				67EA51BF2EF988F7003958BE /* UIKit.framework */,
 				676C54442D8382FC00E26B6F /* AVFoundation.framework */,
-				67F1844B2D7F8B1100F47423 /* FirebaseCore.framework */,
-				67F184472D7F8B0200F47423 /* FirebaseAuth.framework */,
 				67F184432D7F650200F47423 /* HaversineSatelliteLibrary.framework */,
 				8BD2D13FC437E69544C5D3BD /* Pods_iosApp.framework */,
 				675E1B9B2E5CB7EE00058C08 /* cactus.xcframework */,
@@ -141,7 +135,6 @@
 				7E8F9A0B2D5E6F7800123456 /* PebbleShortcuts.swift */,
 				7E8F9A0D2D5E6F7800123457 /* SpeechAnalyzerBridge.swift */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
-				6707B38A2DF7BF28003519BB /* GoogleService-Info.plist */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
@@ -167,7 +160,6 @@
 				B92378962B6B1156000C7307 /* Frameworks */,
 				7555FF79242A565900829871 /* Resources */,
 				6065B47E070ACE50C8BFC442 /* [CP] Embed Pods Frameworks */,
-				3D40017A2DFF974800DBCD17 /* Upload firebase desym */,
 				3D6A68E62E60BEF300FD27DF /* Set versions */,
 				2FCBF04BA4B901948B2E3195 /* [CP] Copy Pods Resources */,
 			);
@@ -219,7 +211,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6707B38B2DF7BF28003519BB /* GoogleService-Info.plist in Resources */,
 				671C01502FFC4F2E00E76758 /* needle-pebble-ft-cq4.zip in Resources */,
 				67555A962E0212D1006BB488 /* JSTimeout.js in Resources */,
 				677B8EF62DBFE88C0060DBD6 /* startup.js in Resources */,
@@ -249,28 +240,6 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-resources.sh\"\n";
 			showEnvVarsInLog = 0;
-		};
-		3D40017A2DFF974800DBCD17 /* Upload firebase desym */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)/Contents/Resources/DWARF/$(APP_NAME)",
-				"$(BUILT_PRODUCTS_DIR)/$(INFOPLIST_PATH)",
-				"${PROJECT_DIR}/iosApp/GoogleService-Info.plist",
-			);
-			name = "Upload firebase desym";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/firebase-desym-uploaded.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# Only mark done on success, or a failed upload is never retried.\nif [ \"${CONFIGURATION}\" = \"Debug\" ]; then\n  touch \"${SCRIPT_OUTPUT_FILE_0}\"\n  exit 0\nfi\n${PODS_ROOT}/FirebaseCrashlytics/upload-symbols -gsp \"${PROJECT_DIR}/iosApp/GoogleService-Info.plist\" -p ios \"${DWARF_DSYM_FOLDER_PATH}\" \"${PROJECT_DIR}/../composeApp/build/cocoapods/framework/ComposeApp.framework.dSYM\" && touch \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 		};
 		3D6A68E62E60BEF300FD27DF /* Set versions */ = {
 			isa = PBXShellScriptBuildPhase;

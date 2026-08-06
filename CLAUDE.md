@@ -1,38 +1,35 @@
 # CoreApp
 
-Kotlin Multiplatform / Compose Multiplatform app targeting Android and iOS.
+Kotlin Multiplatform / Compose Multiplatform app targeting iOS.
 
 ## Overview
 
-- App supports modern Pebble/Core watches over BLE, exposing features like notifications, health data, watchfaces, and more.
-- 'Index 01' AKA 'Ring' is a new ring device to record notes and ingest into the 'Index AI'. The 'experimental' module is dedicated to ring device features.
-- The ring is not 'always-on' like a watch so is scanned for continuously.
+- App supports modern Pebble watches over BLE, exposing features like notifications, health data, watchfaces, and more.
+- This fork is local-first: it has no Firebase-backed account, Locker, or Ring product.
 
 ## Platform Rules
 
-- **All features must work on both Android and iOS.** Write shared code in `commonMain` whenever possible. If a feature cannot be implemented on one platform, alert the user before proceeding.
-- **Do NOT modify the Ring recording processing pipeline.** The Ring Bluetooth audio capture, preprocessing, transcription, and agent processing flow works correctly. New audio input sources (e.g., phone mic) must massage their output into the format the existing pipeline expects (16kHz, PCM_16BIT, mono, raw) and feed into `queueLocalAudioProcessing(fileId)`.
+- **Target iOS.** Write shared code in `commonMain` where it benefits the retained iOS product; platform-specific work belongs in `iosMain` or the Swift shell.
+- Do not alter the Pebble Bluetooth/protocol path or the public app/watchface catalog without an explicit request.
 
 ## Repository layout
 
-- `:composeApp` — shared Compose UI / Firebase / Cocoapods / Koin DI, and the iOS entry point. KMP library.
-- `:androidApp` — Android application shell: manifest, launcher resources, signing, R8, google-services. `applicationId` is `coredevices.coreapp`; the Activity and Service classes it declares live in `:composeApp`.
+- `:composeApp` — shared Compose UI / Cocoapods / Koin DI, and the iOS entry point. KMP library.
 - `:libpebble3` — KMP library for talking to Pebble/Core watches (BLE, protocol, services, endpoint managers). Mirrored from a standalone repo.
 - `:pebble` — Pebble-related shared code used by the app.
-- `:experimental` — newer/experimental device features (e.g. ring); see `coredevices.ring`.
-- `:util` — shared utilities (logging, IO, etc.).
-- `:mcp`, `:index-ai`, `:libindex` — AI/MCP-related modules.
-- `:cactus`, `:resampler`, `:krisp-stubs` — audio/ML support modules. `:cactus-native` is a plain Android library holding cactus' CMake build and prebuilt `.so` (the KMP Android library plugin has no NDK support).
+- `:util` — shared utilities (logging, IO, local identity, etc.).
+- `:mcp`, `:index-ai`, `:libindex` — compatibility/data modules used by the retained build.
+- `:cactus`, `:resampler`, `:krisp-stubs` — audio/ML support modules.
 - `:blobannotations`, `:blobdbgen` — KSP annotations + code generator for Pebble blobdb.
 
 iOS app project: `iosApp/iosApp.xcworkspace` (always open the `.xcworkspace`, not `.xcodeproj`).
 
 ## General editing info
 
-- Source layout per module follows standard KMP: `src/commonMain/kotlin`, `src/androidMain/kotlin`, `src/iosMain/kotlin`, plus `commonTest` / `androidUnitTest` / `androidInstrumentedTest`.
+- Source layout per active module follows standard KMP: `src/commonMain/kotlin`, `src/iosMain/kotlin`, and tests. Android source directories are inactive historical reference.
 - Compose resources are generated under the package `coreapp.composeapp.generated.resources`.
-- `versionCode` is derived from git commit count; `versionName` requires a git tag (e.g. `git tag 1.0.0`) or falls back to `"unknown"`. Both are set lazily in `androidComponents.onVariants` so the git commands don't run during configuration.
-- DI is Koin (`koin-core`, `koin-compose`, `koin-compose-viewmodel`); navigation uses `androidx.navigation.compose`; logging uses Kermit; HTTP is Ktor (OkHttp on Android, Darwin on iOS).
+- `versionName` requires a git tag (e.g. `git tag 1.0.0`) or falls back to `"unknown"`.
+- DI is Koin (`koin-core`, `koin-compose`, `koin-compose-viewmodel`); navigation uses `androidx.navigation.compose`; logging uses Kermit; HTTP uses Ktor/Darwin on iOS.
 - Some dependencies are internally developed and published. You can still ask for the source code of these dependencies to be included in the session if you need more context but don't try looking for it in the filesystem.
 
 ## Guidance
@@ -102,7 +99,7 @@ When adding a new format/encoding, prefer keeping the local storage format uncha
 
 ## Useful references
 
-- Public-facing setup steps (iOS prerequisites, Firebase, signing): `README.md`.
+- Public-facing setup steps (iOS prerequisites and signing): `README.md`.
 - Contribution / licensing: `CONTRIBUTING.md`, `LICENSE`, `LICENSE-COMMERCIAL`.
 
 ## Building/installing
@@ -112,7 +109,6 @@ When adding a new format/encoding, prefer keeping the local storage format uncha
 - Gradle wrapper at the root: `./gradlew`.
 - JDK 17 required. JVM target is 17 across modules.
 - Version catalog: `gradle/libs.versions.toml`.
-- Android: `./gradlew :androidApp:assembleDebug` / `assembleRelease`. Needs `androidApp/src/google-services.json` (a dummy is committed alongside).
 - iOS: `./gradlew podInstall`, then build from Xcode against `iosApp/iosApp.xcworkspace`.
 - The iOS framework is named `ComposeApp` and is wired up via the Kotlin Cocoapods plugin in `composeApp/build.gradle.kts`.
 
@@ -125,18 +121,4 @@ When adding a new format/encoding, prefer keeping the local storage format uncha
     3. `codesign --force --sign - --preserve-metadata=identifier,entitlements,flags --timestamp=none` on the framework, then on `Pebble.app` itself
     4. `xcrun simctl uninstall` + `install` + `launch` — no xcodebuild needed
        Only run a full `xcodebuild` again when you change Swift code, Info.plist, resources, or pod dependencies.
-
-### Android local release install
-
-When asked to make a release build and install it on a local device, follow the GitHub Actions release build shape instead of inventing a shortcut:
-
-1. Add or confirm `LOCAL_RELEASE_BUILD=true` in the root `local.properties`. This makes the release variant use the debug signing config, so it can install over an existing local/debug app without uninstalling.
-2. Build from the repo root with `./gradlew :androidApp:assembleRelease --stacktrace --no-daemon`. Do not skip release lint unless the user explicitly asks.
-3. Install over the existing app with `adb -s <device-id> install -r androidApp/build/outputs/apk/release/androidApp-release.apk`. Do not uninstall first unless explicitly requested.
-4. Launch and verify with logcat:
-    - `adb -s <device-id> logcat -c`
-    - `adb -s <device-id> shell monkey -p coredevices.coreapp -c android.intent.category.LAUNCHER 1`
-    - wait long enough for `PebbleService` / Ring BLE scanning to start, then check for `FATAL EXCEPTION`, `ClassNotFoundException`, `Room cannot verify`, and `Process: coredevices.coreapp`.
-
-Release builds are minified. If a release-only crash appears in Haversine/native BLE code, check R8 keep rules before changing app logic. In particular, the Haversine native library resolves `com.wtlp.haversinesatellitelibrary.logging.HaversineLog` by exact JVM class name, so the app proguard rules must keep that class.
 

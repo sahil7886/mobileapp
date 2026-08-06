@@ -14,8 +14,6 @@ import coredevices.api.WisprJson
 import coredevices.api.WisprResponse
 import coredevices.util.AudioEncoding
 import coredevices.util.CommonBuildKonfig
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
@@ -336,7 +334,7 @@ class WisprFlowTranscriptionService(
         dictionaryContext: List<String>?,
         contentContext: String?
     ) {
-        val nameSplit = Firebase.auth.currentUser?.displayName?.split(" ", limit = 2)
+        val nameSplit: List<String>? = null
         val authMsg = WisprAuthMessage(
             accessToken = clientKey,
             context = WisprContext(

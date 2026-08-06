@@ -4,7 +4,6 @@ import AppUpdateTracker
 import NextBugReportContext
 import com.russhwolf.settings.Settings
 import coredevices.CoreBackgroundSync
-import coredevices.EnableExperimentalDevices
 import coredevices.analytics.CoreAnalytics
 import coredevices.analytics.RealCoreAnalytics
 import coredevices.api.WisprFlowAuth
@@ -17,7 +16,6 @@ import coredevices.coreapp.ui.screens.BugReportProcessor
 import coredevices.coreapp.ui.screens.OnboardingViewModel
 import coredevices.coreapp.util.FileLogWriter
 import coredevices.database.CoreDatabase
-import coredevices.database.UserConfigDao
 import coredevices.database.getCoreRoomDatabase
 import coredevices.firestore.UsersDao
 import coredevices.firestore.UsersDaoImpl
@@ -27,6 +25,7 @@ import coredevices.util.CoreConfigFlow
 import coredevices.util.CoreConfigHolder
 import coredevices.util.DoneInitialOnboarding
 import coredevices.util.OAuthRedirectHandler
+import coredevices.util.auth.LocalIdentityStore
 import coredevices.util.models.ModelManager
 import coredevices.util.transcription.CactusModelPathProvider
 import coredevices.util.transcription.CactusTranscriptionService
@@ -35,12 +34,6 @@ import coredevices.util.transcription.KirinkiTranscriptionService
 import coredevices.util.transcription.PlatformSpeechRecognizer
 import coredevices.util.transcription.TranscriptionService
 import coredevices.util.transcription.WisprFlowRESTTranscriptionService
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.firestore.FirebaseFirestore
-import dev.gitlive.firebase.firestore.FirebaseFirestoreSettings
-import dev.gitlive.firebase.firestore.firestore
-import dev.gitlive.firebase.firestore.firestoreSettings
-import dev.gitlive.firebase.firestore.persistentCacheSettings
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.bind
@@ -49,16 +42,6 @@ import theme.RealThemeProvider
 import theme.ThemeProvider
 
 val utilModule = module {
-    single<FirebaseFirestore> {
-        Firebase.firestore.apply {
-            settings = firestoreSettings {
-                cacheSettings = persistentCacheSettings {
-                    sizeBytes = FirebaseFirestoreSettings.CACHE_SIZE_UNLIMITED
-                }
-            }
-        }
-    }
-
     singleOf(::FileLogWriter)
     singleOf(::BugReportProcessor)
     singleOf(::NextBugReportContext)
@@ -67,8 +50,8 @@ val utilModule = module {
     singleOf(::CoreDeepLinkHandler)
     singleOf(::RealThemeProvider) bind ThemeProvider::class
     single { Settings() }
+    singleOf(::LocalIdentityStore)
     viewModelOf(::OnboardingViewModel)
-    singleOf(::EnableExperimentalDevices)
     singleOf(::AppResumed)
     singleOf(::DoneInitialOnboarding)
     singleOf(::AppUpdateTracker)
@@ -81,7 +64,6 @@ val utilModule = module {
     single { get<CoreDatabase>().heartsDao() }
     single { get<CoreDatabase>().memfaultChunkDao() }
     single { get<CoreDatabase>().analyticsHeartbeatDao() }
-    single { UserConfigDao { get() } }
     single { CoreConfigHolder(defaultValue = CoreConfig(), get(), get()) }
     single { CoreConfigFlow(get<CoreConfigHolder>().config) }
     single { ModelManager(get(), get(), getOrNull()) }
@@ -110,7 +92,7 @@ val utilModule = module {
     } bind TranscriptionService::class
     singleOf(::WisprFlowRESTTranscriptionService)
     singleOf(::KirinkiTranscriptionService)
-    single<UsersDao> { UsersDaoImpl({ get() }, get(), get(), get(), get()) }
+    single<UsersDao> { UsersDaoImpl(get(), get()) }
     singleOf(::HealthSyncTracker)
     singleOf(::PlatformHealthSync)
 }

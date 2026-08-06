@@ -1,8 +1,8 @@
 # Pebble Mobile app
 
-Welcome to the official source code for the Pebble mobile app. Download the app from the [iOS Appstore](https://apps.apple.com/us/app/pebble-core/id6743771967) or [Google Play](https://play.google.com/store/apps/details?id=coredevices.coreapp&hl=en_US). The app is entirely open source. 
+This is an iPhone-only, local-first fork of the Pebble mobile app. It retains the Pebble companion, public app/watchface catalog, and watch synchronization paths while omitting Android, Firebase, and the unrelated Ring product.
 
-This app supports ALL Pebble watches, and Pebble Index 01 rings.
+It supports Pebble watches, including Pebble Time 2.
 
 **Note: this is a public copy of our internal repo, where we do active development; it is synced regularly, but this process is manual so it may lag behind.
 
@@ -10,7 +10,9 @@ This app supports ALL Pebble watches, and Pebble Index 01 rings.
 
 **New to Pebble?** A Pebble watch runs its own firmware and its own apps/watchfaces, but has no internet connection of its own. This app is the watch's companion and gateway to the world: it holds a persistent Bluetooth connection (BLE, or Bluetooth Classic on older watches) to relay notifications, sync data (time, weather, calendar, contacts, health), install watchapps, and proxy network requests on the watch's behalf. Much of the app's job is to be a reliable background service that stays connected and answers the watch quickly.
 
-The codebase is **Kotlin Multiplatform + Compose Multiplatform**: one shared codebase — including the UI — builds both the Android and iOS apps. Almost everything lives in `commonMain`; platform-specific pieces (BLE stack, notification access, background execution) sit behind `expect`/`actual` interfaces. On iOS, `iosApp` is a thin Swift shell that embeds the shared Kotlin code as a framework via CocoaPods.
+The codebase remains **Kotlin Multiplatform + Compose Multiplatform**, with an iOS Swift shell. The active build graph is iOS-only; Android sources remain in the checkout as inactive historical reference and are not built. Platform-specific pieces (BLE stack, notification access, background execution) sit behind `expect`/`actual` interfaces. On iOS, `iosApp` embeds the shared Kotlin code as a framework via CocoaPods.
+
+The public app/watchface catalog remains network-backed. Installing an item stores it in the local SQLite Locker maintained by `libpebble3`, then the usual Pebble Bluetooth sync installs it on the watch. The personal Locker is deliberately local to this iPhone: it is not backed up or restored through a cloud account.
 
 Watch communication lives in `libpebble3` and follows a few core concepts:
 
@@ -23,12 +25,11 @@ Module map:
 
 | Module | What it is |
 |---|---|
-| `composeApp` | App entry point: Compose UI, navigation, DI wiring (Koin), Firebase |
+| `composeApp` | App entry point: Compose UI, navigation, and DI wiring (Koin) |
 | `libpebble3` | Everything needed to talk to a Pebble watch: BLE transport, protocol, services, BlobDB sync. Also usable as a standalone library |
 | `pebble` | Pebble app features shared between platforms, above the library layer |
-| `experimental` | Pebble Index 01 (ring) support: continuous BLE scanning, voice-note recording and ingestion |
-| `index-ai` | The "Index" AI assistant and its data layer (transcription, notes) |
-| `libindex` | Index device plumbing: pairing, transfer, storage |
+| `index-ai` | Local data types used by the remaining shared code |
+| `libindex` | Compatibility interfaces; the Ring product is disabled in this fork |
 | `mcp` | MCP (Model Context Protocol) client/tool integration |
 | `cactus`, `resampler`, `krisp-stubs` | Audio/ML support: on-device LLM inference, audio resampling, and API stubs for the private Krisp noise-cancellation integration |
 | `blobannotations`, `blobdbgen` | KSP annotations + code generator for BlobDB records |
@@ -40,12 +41,7 @@ Stack at a glance: Koin (DI), Ktor (HTTP), Room (storage), Kermit (logging), cor
 
 The cross-platform Pebble mobile app is located in `composeApp`.
 
-Several features (e.g. bug reporting, google login, memfault, online transcription, github developer connection) will not work without tokens configured in `gradle.properties` (but all core features do work).
-
-### Android
-* Compile on Android with `./gradlew :androidApp:assembleRelease`.
-* You will need a `google-services.json` in `androidApp/src` to compile on Android (an examples with dummy values is provided in `google-services-dummy.json`).
-* You will need a keystore with some keys if you intend to do a release build on Android (unless you use `LOCAL_RELEASE_BUILD=true` in `gradle.properties`).
+Core Pebble features work without a cloud account. Apple sign-in is retained only as a device-local identity marker; it does not create a cloud Locker account. Cloud-only features whose servers require the removed account service (such as support inbox, developer contact, cloud battery dashboard, and cloud transcription) are unavailable in this fork.
 
 ### iOS
 
@@ -74,21 +70,7 @@ Several features (e.g. bug reporting, google login, memfault, online transcripti
    sudo ln -s /opt/homebrew/bin/pod /usr/local/bin/pod
    ```
 
-3. **Install Android Studio**
-
-   The Gradle build needs an Android SDK even when only building for iOS
-   (several modules apply the Android Gradle plugin). Install
-   [Android Studio](https://developer.android.com/studio) and let its
-   setup wizard install the SDK at the default location
-   (`~/Library/Android/sdk`).
-
-   Then create a `local.properties` file in the project root pointing at it:
-
-   ```properties
-   sdk.dir=/Users/<you>/Library/Android/sdk
-   ```
-
-4. **Install the iOS platform for Xcode**
+3. **Install the iOS platform for Xcode**
 
    Recent Xcode versions ship without the iOS platform (SDK device
    support and simulator runtime). Without it, any iOS build fails with
@@ -102,52 +84,21 @@ Several features (e.g. bug reporting, google login, memfault, online transcripti
 
 #### Configuration
 
-5. **Configure Entitlements**
+4. **Configure Signing and Capabilities**
 
-   Set `iosApp/iosApp/iosApp.entitlements` to:
+   In Xcode, set your development team and a unique bundle identifier, then
+   enable **HealthKit**, **Sign in with Apple**, and **Push Notifications** for
+   that identifier. The committed entitlement file already declares them.
 
-   ```xml
-   <?xml version="1.0" encoding="UTF-8"?>
-   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-   <plist version="1.0">
-      <dict>
-         <key>com.apple.developer.healthkit</key>
-         <true/>
-      </dict>
-   </plist>
-   ```
-
-6. **Install CocoaPods dependencies**
+5. **Install CocoaPods dependencies**
 
    ```bash
    ./gradlew podInstall
    ```
 
-   This will create `Podfile.lock` and set up all required dependencies.
+   This creates a fresh `Podfile.lock` and sets up the local `composeApp` pod.
 
-7. **Configure Bundle ID and Signing**
-
-   - Open `iosApp/iosApp.xcworkspace` in Xcode (⚠️ **Important**: use `.xcworkspace`, not `.xcodeproj`)
-   - Go to the target `iosApp` → **Signing & Capabilities**
-   - Set your **Team** (your Apple Developer account)
-   - Set **Bundle Identifier** to your own (e.g., `com.yourname.coredevices.coreapp`)
-
-8. **Configure Firebase**
-
-   - Create a free Firebase account at https://console.firebase.google.com
-   - Create a new iOS app with the same Bundle ID you set above
-   - Download `GoogleService-Info.plist` and place it in `iosApp/iosApp/`
-   - The file should be named exactly `GoogleService-Info.plist`
-
-   If you don't need any Firebase-dependent features, you can skip the
-   Firebase account and use the provided dummy config instead (same as
-   `google-services-dummy.json` on Android):
-
-   ```bash
-   cp iosApp/iosApp/GoogleService-Info-dummy.plist iosApp/iosApp/GoogleService-Info.plist
-   ```
-
-9. **Create a git tag for app version**
+6. **Create a git tag for app version**
 
    Create a git tag that will be used as the version of the app:
 
@@ -157,12 +108,12 @@ Several features (e.g. bug reporting, google login, memfault, online transcripti
 
 #### Build and Run
 
-10. **Build and run in Xcode**
+7. **Build and run in Xcode**
 
    - Open `iosApp/iosApp.xcworkspace` in Xcode
    - Select your target device or simulator and run.
 
-   > **Tip**: If you encounter module not found errors (`Mixpanel`, `FirebaseCore`, etc.), make sure you:
+   > **Tip**: If you encounter a module-not-found error, make sure you:
    > - Opened the `.xcworkspace` file (not `.xcodeproj`)
    > - Ran `pod install` successfully
    > - Cleaned the build folder (`Product → Clean Build Folder`)
@@ -188,7 +139,7 @@ Pebble employs several (extremely busy) full time mobile developers to work on t
 
 # Reporting bugs
 
-Please use the built-in bug report feature in the Pebble app by going to Settings > Get Help > New Bug Report instead of Github issues, as the internal bug reports contain more information for us to debug most issues. 
+Use the local diagnostic export in the app, or open a GitHub issue for this fork. The legacy cloud support inbox is intentionally disabled.
 
 # Development Guidelines
 

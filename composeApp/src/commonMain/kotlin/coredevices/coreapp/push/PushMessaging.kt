@@ -6,35 +6,19 @@ import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.PayloadData
 import coredevices.coreapp.api.BugReports
-import coredevices.coreapp.api.PushService
-import coredevices.coreapp.api.PushTokenRequest
-import coredevices.pebble.Platform
-import coredevices.util.emailOrNull
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.launch
 import kotlin.time.Instant
-import kotlin.time.Duration.Companion.seconds
 
 class PushMessaging(
-    private val pushService: PushService,
-    private val platform: Platform,
-    private val appVersion: CoreAppVersion,
     private val bugReports: BugReports,
-    private val platformContext: PlatformContext,
 ) {
     private val logger = Logger.withTag("PushMessaging")
 
     fun init() {
         NotifierManager.addListener(object : NotifierManager.Listener {
             override fun onNewToken(token: String) {
-                logger.v { "onNewToken" }
-                GlobalScope.launch {
-                    uploadToken(token)
-                }
+                // The token remains on-device until a direct APNs provider is
+                // configured. Do not upload it from the app.
+                logger.v { "Received an APNs token" }
             }
 
             override fun onPushNotification(title: String?, body: String?) {
@@ -51,55 +35,6 @@ class PushMessaging(
         })
         NotifierManager.setLogger { message -> Logger.v(message) }
 
-        GlobalScope.launch {
-            Firebase.auth.authStateChanged.drop(1).collect { auth ->
-                logger.d { "Auth changed" }
-                findTokenAndUpload()
-            }
-        }
-    }
-
-    private suspend fun findTokenAndUpload() {
-        val fcmToken = getFcmToken()
-        logger.e { "token = $fcmToken" }
-        if (fcmToken == null) {
-            logger.e { "Failed to get push token" }
-            return
-        }
-        uploadToken(fcmToken)
-    }
-
-    private suspend fun uploadToken(fcmToken: String) {
-        logger.v { "uploadToken" }
-        val userIdToken = try {
-            Firebase.auth.currentUser?.getIdToken(false)
-        } catch (e: Exception) {
-            logger.e(e) { "No user token: ${e.message}" }
-            null
-        }
-
-        val email = Firebase.auth.currentUser?.emailOrNull
-        if (userIdToken == null || email == null) {
-            logger.e { "Failed to get user id token/email" }
-            return
-        }
-
-        val request = try {
-            PushTokenRequest(
-                email = email,
-                push_token = fcmToken,
-                platform = when (platform) {
-                    Platform.IOS -> "ios"
-                    Platform.Android -> "android"
-                },
-                device_id = platformContext.getDeviceId(),
-                app_version = appVersion.version,
-            )
-        } catch (e: IllegalStateException) {
-            logger.e(e) { "Failed to create PushTokenRequest: ${e.message}" }
-            return
-        }
-        pushService.uploadPushToken(request, userIdToken)
     }
 
     private fun handleMessage(data: PayloadData) {
@@ -147,15 +82,6 @@ class PushMessaging(
         }
     }
 
-    private suspend fun getFcmToken(): String? {
-        val token = NotifierManager.getPushNotifier().getToken()
-        if (token != null) {
-            return token
-        }
-        delay(10.seconds)
-        logger.v { "retrying fcm token after 10 seconds" }
-        return NotifierManager.getPushNotifier().getToken()
-    }
 }
 
 data class AtlasPushMessage(

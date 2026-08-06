@@ -92,13 +92,9 @@ import coredevices.ui.PebbleElevatedButton
 import coredevices.ui.SignInDialog
 import coredevices.util.CoreConfigFlow
 import coredevices.util.Platform
-import coredevices.util.emailOrNull
+import coredevices.util.auth.LocalIdentity
+import coredevices.util.auth.LocalIdentityStore
 import coredevices.util.isIOS
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.FirebaseUser
-import dev.gitlive.firebase.auth.auth
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
@@ -117,7 +113,7 @@ data class UserProps(
     val userEmail: String,
 )
 
-fun FirebaseUser?.toUserProps(): UserProps? =
+fun LocalIdentity?.toUserProps(): UserProps? =
     this?.let {
         UserProps(
             userName = it.displayName ?: "",
@@ -171,11 +167,9 @@ fun BugReportScreen(
         val (status, setStatus) = remember { mutableStateOf("") }
         val (sendingProgress, setSendingProgress) = remember { mutableStateOf<Double?>(null) }
         val scope = rememberCoroutineScope()
-        val user by Firebase.auth.authStateChanged.map {
-            it?.emailOrNull ?: return@map null
-            it.toUserProps()
-        }.distinctUntilChanged()
-            .collectAsState(Firebase.auth.currentUser.toUserProps())
+        val identities: LocalIdentityStore = koinInject()
+        val identity by identities.identity.collectAsState()
+        val user = identity.toUserProps()
 
         val keyboardController = LocalSoftwareKeyboardController.current
         val canSendReports = bugReportProcessor.canSendReports()

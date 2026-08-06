@@ -1,12 +1,7 @@
 package coredevices.coreapp
 
-import co.touchlab.crashkios.crashlytics.enableCrashlytics
-import co.touchlab.crashkios.crashlytics.setCrashlyticsUnhandledExceptionHook
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import cocoapods.FirebaseMessaging.FIRMessaging
-import cocoapods.FirebaseMessaging.FIRMessagingAPNSTokenType
-import cocoapods.GoogleSignIn.GIDSignIn
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.memory.MemoryCache
@@ -16,7 +11,6 @@ import com.eygraber.uri.toUri
 import com.mmk.kmpnotifier.extensions.onApplicationDidReceiveRemoteNotification
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
-import coredevices.ExperimentalDevices
 import coredevices.analytics.AnalyticsBackend
 import coredevices.coreapp.di.apiModule
 import coredevices.coreapp.di.iosDefaultModule
@@ -24,20 +18,14 @@ import coredevices.coreapp.di.utilModule
 import coredevices.coreapp.ui.navigation.CoreDeepLinkHandler
 import coredevices.coreapp.util.FileLogWriter
 import coredevices.coreapp.util.initLogging
-import coredevices.experimentalModule
 import coredevices.pebble.PebbleAppDelegate
 import coredevices.pebble.PebbleDeepLinkHandler
 import coredevices.pebble.watchModule
-import coredevices.ring.agent.builtin_servlets.reminders.IOSBuiltInReminderIntegration
-import coredevices.ring.reminders.ReminderCompleter
-import coredevices.ring.reminders.ReminderDeepLinkResolver
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
 import coredevices.util.DoneInitialOnboarding
 import coredevices.util.OAuthRedirectHandler
 import coredevices.util.transcription.NativeSpeechAnalyzerBridge
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.crashlytics.crashlytics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -45,11 +33,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.Platform
 import kotlinx.datetime.toKotlinInstant
 import kotlinx.datetime.toNSDate
-import okio.ByteString.Companion.toByteString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import org.koin.core.component.inject
@@ -84,7 +70,6 @@ object IOSDelegate : KoinComponent {
     private val pebbleAppDelegate: PebbleAppDelegate by inject()
     private val doneInitialOnboarding: DoneInitialOnboarding by inject()
     private val coreConfigHolder: CoreConfigHolder by inject()
-    private val experimentalDevices: ExperimentalDevices by inject()
     private val oAuthRedirectHandler: OAuthRedirectHandler by inject()
     private val bgTaskScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -108,10 +93,9 @@ object IOSDelegate : KoinComponent {
             logger.d("IOSDelegate handleOpenUrl $url")
             val pebbleDeepLinkHandler: PebbleDeepLinkHandler = get()
             val coreDeepLinkHandler: CoreDeepLinkHandler = get()
-            return GIDSignIn.sharedInstance.handleURL(url) ||
-                    uri?.let {
-                        pebbleDeepLinkHandler.handle(uri) || experimentalDevices.handleDeepLink(uri) || coreDeepLinkHandler.handle(uri)
-                    } ?: false
+            return uri?.let {
+                pebbleDeepLinkHandler.handle(uri) || coreDeepLinkHandler.handle(uri)
+            } ?: false
         } else {
             return true
         }
@@ -124,9 +108,6 @@ object IOSDelegate : KoinComponent {
 
     fun didFinishLaunching(
         application: UIApplication,
-        logAnalyticsEvent: (String, Map<String, Any>?) -> Unit,
-        addGlobalAnalyticsProperty: (String, String?) -> Unit,
-        setAnalyticsEnabled: (Boolean) -> Unit
     ): Boolean {
         logger.d("IOSDelegate didFinishLaunching")
         val analyticsBackendLogger = object : AnalyticsBackend {
@@ -134,16 +115,12 @@ object IOSDelegate : KoinComponent {
                 name: String,
                 parameters: Map<String, Any>?
             ) {
-                logAnalyticsEvent(name, parameters)
+                logger.v { "analytics event=$name parameters=$parameters" }
             }
 
-            override fun addGlobalProperty(name: String, value: String?) {
-                addGlobalAnalyticsProperty(name, value)
-            }
+            override fun addGlobalProperty(name: String, value: String?) = Unit
 
-            override fun setEnabled(enabled: Boolean) {
-                setAnalyticsEnabled(enabled)
-            }
+            override fun setEnabled(enabled: Boolean) = Unit
         }
         val analyticsBackendModule = module {
             single { analyticsBackendLogger } bind AnalyticsBackend::class
@@ -151,7 +128,6 @@ object IOSDelegate : KoinComponent {
         startKoin {
             modules(
                 iosDefaultModule,
-                experimentalModule,
                 apiModule,
                 utilModule,
                 watchModule,
@@ -172,7 +148,6 @@ object IOSDelegate : KoinComponent {
                 }
                 .build()
         }
-        setupCrashlytics()
         initLogging()
         NSNotificationCenter.defaultCenter.addObserverForName(
             name = NSProcessInfoPowerStateDidChangeNotification,
@@ -182,11 +157,6 @@ object IOSDelegate : KoinComponent {
             val isLowPowerMode = NSProcessInfo.processInfo.isLowPowerModeEnabled()
             logger.i { "Power state changed: isLowPowerMode=$isLowPowerMode" }
         }
-        val crashedPreviously = Firebase.crashlytics.didCrashOnPreviousExecution()
-        if (crashedPreviously) {
-            logger.e { "Previous app crash detected!" }
-        }
-
         BGTaskScheduler.sharedScheduler.registerForTaskWithIdentifier(
             identifier = REFRESH_TASK_IDENTIFIER,
             usingQueue = null,
@@ -234,7 +204,6 @@ object IOSDelegate : KoinComponent {
                 showPushNotification = false
             )
         )
-        experimentalDevices.appInit()
         initPebble()
         GlobalScope.launch(Dispatchers.Main) {
             // Don't do this before we request permissions (it requests permissions - we want to
@@ -266,33 +235,6 @@ object IOSDelegate : KoinComponent {
         logger.d { "userNotificationCenterDidReceive" }
         val userInfo = response.notification.request.content.userInfo ?: emptyMap<Any?, Any?>()
 
-        // Reminder notifications carry only the reminder id; the feed item to deep link to
-        // isn't linked when the notification is scheduled, so resolve it now (at tap time).
-        val reminderId = (userInfo[ReminderDeepLinkResolver.USERINFO_REMINDER_ID] as? String)?.toIntOrNull()
-        if (reminderId != null) {
-            // "Done" button (MOB-8439): mark the backing item complete in the background without
-            // opening the app. Completing it cancels the reminder and dismisses the notification.
-            if (response.actionIdentifier == IOSBuiltInReminderIntegration.REMINDER_ACTION_DONE) {
-                val completer: ReminderCompleter = get()
-                bgTaskScope.launch {
-                    runCatching { completer.markDone(reminderId) }
-                        .onFailure { logger.e(it) { "Failed to mark reminder $reminderId done" } }
-                    withContext(Dispatchers.Main) { completionHandler() }
-                }
-                return
-            }
-            val resolver: ReminderDeepLinkResolver = get()
-            bgTaskScope.launch {
-                val link = resolver.resolveDeepLink(reminderId)
-                logger.d { "Handling reminder deep link from notification: $link" }
-                withContext(Dispatchers.Main) {
-                    NSURL.URLWithString(link)?.let { handleOpenUrl(it) }
-                    completionHandler()
-                }
-            }
-            return
-        }
-
         val action = response.actionIdentifier
         val deepLink = userInfo["notification-deepLink"] as? String
         val actionDeepLink = userInfo["$action-deepLink"] as? String
@@ -302,17 +244,6 @@ object IOSDelegate : KoinComponent {
             handleOpenUrl(NSURL.URLWithString(deepLinkToHandle)!!)
         }
         completionHandler()
-    }
-
-    @OptIn(ExperimentalNativeApi::class)
-    private fun setupCrashlytics() {
-        // Debug builds never upload their dSYMs, so their crashes can't be symbolicated.
-        if (Platform.isDebugBinary) {
-            Firebase.crashlytics.setCrashlyticsCollectionEnabled(false)
-            return
-        }
-        enableCrashlytics()
-        setCrashlyticsUnhandledExceptionHook()
     }
 
     fun applicationWillTerminate() {
@@ -379,20 +310,13 @@ object IOSDelegate : KoinComponent {
     }
 
     fun applicationDidRegisterForRemoteNotificationsWithDeviceToken(deviceToken: NSData) {
-        val messaging = FIRMessaging.messaging()
-        val initialSetup = messaging.APNSToken == null
-        logger.d { "applicationDidRegisterForRemoteNotificationsWithDeviceToken: ${deviceToken.toByteString()}, initialSetup=$initialSetup" }
-        val tokenType = if (isDevelopmentEntitlement()) {
-            FIRMessagingAPNSTokenType.FIRMessagingAPNSTokenTypeSandbox
-        } else {
-            FIRMessagingAPNSTokenType.FIRMessagingAPNSTokenTypeProd
-        }
-        messaging.setAPNSToken(deviceToken, tokenType)
+        // Keep the APNs registration hook native and local. A future direct APNs
+        // provider can consume this token without a cloud SDK in the app.
+        // Do not write the token itself to the device log or the Xcode console.
+        logger.d { "applicationDidRegisterForRemoteNotificationsWithDeviceToken: ${deviceToken.length} bytes" }
     }
 
     fun applicationDidReceiveRemoteNotification(userInfo: Map<Any?, *>, fetchCompletionHandler: (ULong) -> Unit) {
-        val messaging = FIRMessaging.messaging()
-        messaging.appDidReceiveMessage(userInfo)
         NotifierManager.onApplicationDidReceiveRemoteNotification(userInfo)
         fetchCompletionHandler(UIBackgroundFetchResult.UIBackgroundFetchResultNewData.value)
     }
@@ -404,18 +328,6 @@ object IOSDelegate : KoinComponent {
         val url = userActivity.webpageURL ?: return false
         return handleOpenUrl(url)
     }
-
-    private fun isDevelopmentEntitlement(): Boolean {
-        val path = NSBundle.mainBundle.pathForResource("embedded", "mobileprovision")
-            ?: return false
-        val data = NSData.dataWithContentsOfFile(path)
-            ?.toByteString()
-            ?.utf8()
-            ?.replace("\t", "")
-            ?: return false
-        return data.contains("<key>aps-environment</key>\n<string>development</string>")
-    }
-
 
 }
 

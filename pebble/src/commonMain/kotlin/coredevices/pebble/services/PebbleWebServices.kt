@@ -20,8 +20,6 @@ import coredevices.pebble.ui.CommonAppType
 import coredevices.pebble.weather.WeatherResponse
 import coredevices.util.CoreConfigFlow
 import coredevices.util.WeatherUnit
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.ktor.client.HttpClient
 import io.ktor.client.call.NoTransformationFoundException
 import io.ktor.client.call.body
@@ -119,12 +117,10 @@ class PebbleHttpClient(
     companion object {
         suspend fun PebbleHttpClient.authFor(type: HttpClientAuthType): String? = when (type) {
             HttpClientAuthType.Pebble, HttpClientAuthType.PebbleOptional -> pebbleAccount.get().loggedIn.value
-            HttpClientAuthType.Core -> try {
-                Firebase.auth.currentUser?.getIdToken(false)
-            } catch (e: Exception) {
-                logger.e(e) { "Network error fetching Firebase token" }
-                null
-            }
+            // Core endpoints that require an account token are unavailable in
+            // the local-only iPhone product. Public app-store feeds do not use
+            // this authentication mode.
+            HttpClientAuthType.Core -> null
             HttpClientAuthType.None -> null
         }
 

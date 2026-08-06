@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.russhwolf.settings.Settings
 import coredevices.CoreBackgroundSync
-import coredevices.ExperimentalDevices
 import coredevices.analytics.AnalyticsBackend
 import coredevices.analytics.CoreAnalytics
 import coredevices.analytics.setUser
@@ -21,11 +20,8 @@ import coredevices.util.CommonBuildKonfig
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
 import coredevices.util.DoneInitialOnboarding
-import coredevices.util.emailOrNull
 import coredevices.util.models.CactusSTTMode
 import coredevices.util.transcription.CactusModelPathProvider
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.rebble.libpebblecommon.connection.AppContext
 import io.rebble.libpebblecommon.connection.LibPebble
 import kotlinx.coroutines.CoroutineScope
@@ -53,7 +49,6 @@ class CommonAppDelegate(
     private val pebbleAppDelegate: PebbleAppDelegate,
     private val appUpdate: AppUpdate,
     private val weatherFetcher: WeatherFetcher,
-    private val experimentalDevices: ExperimentalDevices,
     private val coreConfigHolder: CoreConfigHolder,
     private val appContext: AppContext,
     private val usersDao: UsersDao,
@@ -149,19 +144,11 @@ class CommonAppDelegate(
         GlobalScope.launch(Dispatchers.Default) {
             usersDao.initUserDevToken(pebbleAccountProvider.get().devToken.value)
         }
-        GlobalScope.launch(Dispatchers.Default) {
-            Firebase.auth.currentUser?.emailOrNull?.let {
-                analyticsBackend.setUser(email = it)
-            }
-        }
         initCactus()
         pushMessaging.init()
         bugReports.init()
         GlobalScope.launch(Dispatchers.Default) {
             weatherFetcher.init()
-            withContext(Dispatchers.Main) {
-                experimentalDevices.init()
-            }
         }
         oneTimeSetLockerOrderMode()
         platformHealthSync.startAutoSync(GlobalScope)
@@ -175,8 +162,7 @@ class CommonAppDelegate(
             logger.d { "Skipping background sync - already in progress" }
             return
         }
-        // Use the background runtime window even if the sync intervals below haven't elapsed
-        experimentalDevices.onBackgroundSync()
+        // Use the background runtime window even if the sync intervals below haven't elapsed.
         val now = Clock.System.now()
         val config = coreConfigHolder.config.value
         val lastFullSync =

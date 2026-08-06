@@ -1,5 +1,21 @@
 # Pebble Time 2 health-sync wishlist
 
+## iPhone-only fork foundation
+
+- [x] Make the active Gradle graph and CI iOS-only; Android SDK/NDK and Android signing are no
+  longer build requirements.
+- [x] Remove Firebase, Google Sign-In, Mixpanel, and Firebase Crashlytics from the active iOS
+  dependency graph. Local SQLite, file diagnostics, and the Xcode device console remain.
+- [x] Keep the public app/watchface catalog and normal Bluetooth installation path. Store installed
+  apps in `libpebble3`'s local SQLite Locker instead of a cloud Locker mirror.
+- [~] Retain native Sign in with Apple as a device-local identity marker. Validate it with a signed
+  iPhone build; it intentionally does not restore data from another device.
+- [~] Retain native APNs registration and receipt without Firebase. A direct APNs provider has not
+  been implemented, so do not claim server-driven push delivery yet.
+- [ ] Cloud-only features whose existing servers require the removed account token (Locker backup,
+  support inbox, developer contact, cloud battery dashboard, and cloud transcription) need a
+  separate direct account-service design before they can return.
+
 ## Completed in the first vertical slice
 
 - [x] Preserve the Core Devices mobile app as the only Bluetooth connection owner; health data

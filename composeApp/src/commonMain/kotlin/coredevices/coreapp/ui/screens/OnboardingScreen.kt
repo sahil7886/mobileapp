@@ -266,7 +266,6 @@ fun OnboardingScreen(
                 }
 
                 OnboardingStage.SignIn -> {
-                    val coreConfig by viewModel.coreConfig.collectAsState()
                     Column(
                         modifier = Modifier.fillMaxSize().padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -278,21 +277,21 @@ fun OnboardingScreen(
                             modifier = Modifier.padding(bottom = 25.dp),
                         )
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text("Sign in to backup your Pebble account to backup apps, settings, etc", textAlign = TextAlign.Center)
+                        Text(
+                            "Optional: sign in with Apple to identify this app on this iPhone. " +
+                                "Your Pebble apps and settings remain local to this device.",
+                            textAlign = TextAlign.Center,
+                        )
                         SignInButtons(
                             onDismiss = { viewModel.stage.value = OnboardingStage.Done },
                             primaryColor = true,
-                            // No anonymous data to preserve at this point — proceed straight
-                            // to the existing account if Firebase reports a collision.
                             skipAccountSwitchConfirmation = true,
                         )
-                        if (!coreConfig.enableIndex) {
-                            PebbleElevatedButton(
-                                text = "Skip",
-                                onClick = { viewModel.stage.value = OnboardingStage.Done },
-                                primaryColor = true,
-                            )
-                        }
+                        PebbleElevatedButton(
+                            text = "Continue",
+                            onClick = { viewModel.stage.value = OnboardingStage.Done },
+                            primaryColor = true,
+                        )
                     }
                 }
 

@@ -28,7 +28,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Unlike the streaming services, kirinki is a batch endpoint: the full clip is
  * buffered, encoded as a 16 kHz / 16-bit mono WAV and POSTed in one request,
- * authorized with the user's Firebase ID token. The model returns the full
+ * authorized by the legacy cloud account. The model returns the full
  * transcription (and timing metadata we currently ignore) in a single response.
  */
 class KirinkiTranscriptionService : ApiClient(CommonBuildKonfig.USER_AGENT_VERSION, timeout = REQUEST_TIMEOUT),
@@ -107,7 +107,7 @@ class KirinkiTranscriptionService : ApiClient(CommonBuildKonfig.USER_AGENT_VERSI
                 if (language is STTLanguage.Specific && language.languageCodes.isNotEmpty()) {
                     parameter("language_code", toBcp47(language.languageCodes.first(), Locale.current.region))
                 }
-                firebaseAuth()
+                requireCloudAuth()
                 contentType(ContentType.Application.OctetStream)
                 setBody(wav)
             }

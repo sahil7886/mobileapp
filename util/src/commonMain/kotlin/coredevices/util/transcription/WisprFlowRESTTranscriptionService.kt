@@ -12,8 +12,6 @@ import coredevices.api.WisprTranscribeResponse
 import coredevices.util.AudioEncoding
 import coredevices.util.CommonBuildKonfig
 import coredevices.util.writeWavHeader
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -182,7 +180,7 @@ class WisprFlowRESTTranscriptionService(
         dictionaryContext: List<String>?,
         contentContext: String?,
     ): WisprContext {
-        val nameSplit = Firebase.auth.currentUser?.displayName?.split(" ", limit = 2)
+        val nameSplit: List<String>? = null
         return WisprContext(
             app = AppInfo(name = "Core Devices", type = "other"),
             dictionaryContext = dictionaryContext,

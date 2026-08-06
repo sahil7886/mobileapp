@@ -1,41 +1,10 @@
 import SwiftUI
 import UIKit
 import ComposeApp
-import Mixpanel
-import FirebaseCore
-import FirebaseAuth
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        let mixpanel = Mixpanel.initialize(token: "2c9c89f4bc233ba9317f82abe488511a", trackAutomaticEvents: true)
-        let res = IOSDelegate.shared.didFinishLaunching(application: application, logAnalyticsEvent: { (name: String, params: [String: Any]?) -> Void in
-            if let params = params as? Properties {
-                let properties = params
-                mixpanel.track(event: name, properties: properties)
-            } else {
-                mixpanel.track(event: name)
-            }
-        }, addGlobalAnalyticsProperty: { (name: String, value: MixpanelType?) -> Void in
-            if (name == "email") {
-                if let value = value as? String {
-                    mixpanel.identify(distinctId: value)
-                } else {
-                    mixpanel.reset()
-                }
-            } else {
-                if let value = value {
-                    mixpanel.registerSuperPropertiesOnce([name: value])
-                } else {
-                    mixpanel.unregisterSuperProperty(name)
-                }
-            }
-        }, setAnalyticsEnabled: { (enabled: KotlinBoolean) -> Void in
-            if (enabled.boolValue) {
-                mixpanel.optInTracking()
-            } else {
-                mixpanel.optOutTracking()
-            }
-        })
+        let res = IOSDelegate.shared.didFinishLaunching(application: application)
         SpeechAnalyzerBridge.register()
         UNUserNotificationCenter.current().delegate = self
         return res
@@ -44,11 +13,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func application(_ app: UIApplication,
                      open url: URL,
                      options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        if !Auth.auth().canHandle(url) {
-            return IOSDelegate.shared.handleOpenUrl(url: url)
-        } else {
-            return true
-        }
+        return IOSDelegate.shared.handleOpenUrl(url: url)
     }
     
     func applicationWillTerminate(_ application: UIApplication) {

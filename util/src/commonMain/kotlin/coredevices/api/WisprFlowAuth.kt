@@ -43,7 +43,7 @@ class WisprFlowAuth : ApiClient(CommonBuildKonfig.USER_AGENT_VERSION) {
 
             return try {
                 val response = client.post("$authUrl/token") {
-                    firebaseAuth()
+                    requireCloudAuth()
                     expectSuccess = true
                 }
                 val tokenResponse = response.body<WisprTokenResponse>()

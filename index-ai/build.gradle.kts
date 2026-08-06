@@ -58,7 +58,6 @@ kotlin {
                 implementation(libs.room.runtime)
                 implementation(libs.room.paging)
                 implementation(libs.kotlinx.datetime)
-                implementation(libs.firebase.firestore)
 
                 implementation(project(":mcp"))
             }

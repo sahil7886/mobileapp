@@ -27,25 +27,13 @@ androidx-core = "1.19.0"
 monitorVersion = "1.8.0"
 androidXTestVersion = "1.7.0"
 androidXRulesVersion = "1.7.0"
-googleServices = "4.5.0"
-firebase-crashlytics-plugin = "3.0.7"
 androidx-activityCompose = "1.13.0"
 androidx-credentials = "1.6.0"
-gms-auth = "21.6.0"
-googleId = "1.2.0"
 androidxWork = "2.11.2"
 play-update = "2.1.0"
-crashkios = "0.9.0"
 androidx-lifecycle = "2.11.0"
 androidx-navigation = "2.9.2"
-firebase-kotlin = "2.5.0"
-# Deliberately ahead of the BOM firebase-kotlin imports (33.15.0): its firebase-auth 23.2.1 has an
-# acknowledged regression that randomly signs users out (firebase-android-sdk#7111). We avoid the
-# APIs auth 24.x removed (updateEmail/fetchSignInMethodsForEmail), so forcing the newer BOM is safe.
-# NEVER downgrade below 34.x - older versions can't read the newer auth persistence, signing everyone out.
-firebase-bom = "34.16.0"
 kmpnotifier = "1.6.1"
-mixpanel-android = "8.9.0"
 buildkonfig = "0.22.0"
 webview = "2.0.3"
 coil = "3.5.0"
@@ -78,8 +66,6 @@ composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "k
 nativeCocoaPods = { id = "org.jetbrains.kotlin.native.cocoapods", version.ref = "kotlin" }
 kotlinx-atomicfu = { id = "org.jetbrains.kotlinx.atomicfu", version.ref = "atomicfu" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-googleServices = { id = "com.google.gms.google-services", version.ref = "googleServices" }
-firebaseCrashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }
 buildKonfig = { id = "com.codingfeline.buildkonfig", version.ref = "buildkonfig" }
 androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 androidLint = { id = "com.android.lint", version.ref = "agp" }
@@ -134,24 +120,14 @@ androidx-test-runner = { group = "androidx.test", name = "runner", version.ref =
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidXRulesVersion" }
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "androidx-credentials" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
-gms-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "gms-auth" }
-identity-google = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleId" }
 androidx-work = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "androidxWork" }
 androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 play-update = { group = "com.google.android.play", name = "app-update", version.ref = "play-update" }
 play-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "play-update" }
-crashkios = { module = "co.touchlab.crashkios:crashlytics", version.ref = "crashkios" }
 androidx-lifecycle-viewmodel = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 androidx-navigation-compose = { group = "org.jetbrains.androidx.navigation", name = "navigation-compose", version.ref = "androidx-navigation" }
-firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
-firebase-auth = { group = "dev.gitlive", name = "firebase-auth", version.ref = "firebase-kotlin" }
-firebase-firestore = { group = "dev.gitlive", name = "firebase-firestore", version.ref = "firebase-kotlin" }
-firebase-crashlytics = { group = "dev.gitlive", name = "firebase-crashlytics", version.ref = "firebase-kotlin" }
-firebase-crashlytics-ndk = { group = "com.google.firebase", name = "firebase-crashlytics-ndk" }
-firebase-storage = { group = "dev.gitlive", name = "firebase-storage", version.ref = "firebase-kotlin" }
 kmpnotifier = { group = "io.github.mirzemehdi", name = "kmpnotifier", version.ref = "kmpnotifier" }
-mixpanel-android = { module = "com.mixpanel.android:mixpanel-android", version.ref = "mixpanel-android" }
 webview = { module = "io.github.kevinnzou:compose-webview-multiplatform", version.ref = "webview" }
 coil = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }

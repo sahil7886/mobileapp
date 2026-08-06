@@ -1,6 +1,5 @@
 package coredevices.pebble.ui
 
-import CommonApiConfig
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,25 +34,16 @@ import coredevices.ui.PebbleWebview
 import coredevices.ui.PebbleWebviewNavigator
 import coredevices.ui.PebbleWebviewUrlInterceptor
 import coredevices.ui.SignInDialog
-import coredevices.util.emailOrNull
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
-import io.ktor.http.encodeURLParameter
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import coredevices.util.auth.LocalIdentityStore
 import org.koin.compose.koinInject
-
-private const val MOBILE_BATTERY_PATH = "/m/battery"
 
 @Composable
 fun BatterySettingsScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
-    val apiConfig = koinInject<CommonApiConfig>()
     val settings = koinInject<Settings>()
     val analyticsEnabled = settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)
-    val accountEmail by Firebase.auth.idTokenChanged
-        .map { it?.emailOrNull }
-        .distinctUntilChanged()
-        .collectAsState(Firebase.auth.currentUser?.emailOrNull)
+    val identities: LocalIdentityStore = koinInject()
+    val identity by identities.identity.collectAsState()
+    val accountEmail = identity?.email
 
     var showSignInDialog by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf<String?>(null) }
@@ -65,31 +55,12 @@ fun BatterySettingsScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
     }
 
     LaunchedEffect(accountEmail) {
-        val email = accountEmail ?: run {
+        if (accountEmail == null) {
             url = null
             return@LaunchedEffect
         }
-        val baseUrl = apiConfig.bugUrl
-        if (baseUrl.isNullOrBlank()) {
-            url = null
-            loadError = "Battery analytics service is not configured"
-            return@LaunchedEffect
-        }
-        val idToken = try {
-            Firebase.auth.currentUser?.getIdToken(false)
-        } catch (e: Exception) {
-            Logger.withTag("BatterySettingsScreen").e(e) { "Failed to mint id token" }
-            null
-        }
-        if (idToken == null) {
-            // Drop the previous URL too, otherwise a stale (still-rendered)
-            // WebView would hide the new error from the user.
-            url = null
-            loadError = "Sign in to view your battery analytics"
-            return@LaunchedEffect
-        }
-        loadError = null
-        url = buildBatteryUrl(baseUrl, email = email, idToken = idToken)
+        url = null
+        loadError = "Battery analytics requires the legacy cloud account and is not included in this local-only build."
     }
 
     if (showSignInDialog) {
@@ -183,21 +154,6 @@ fun BatterySettingsScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
             modifier = Modifier.fillMaxSize(),
             onPageError = { pageError = it },
         )
-    }
-}
-
-private fun buildBatteryUrl(
-    baseUrl: String,
-    email: String,
-    idToken: String,
-): String {
-    // bugUrl is configured as `<host>/api`; the mobile battery page is at the host root.
-    val root = baseUrl.trimEnd('/').removeSuffix("/api")
-    return buildString {
-        append(root)
-        append(MOBILE_BATTERY_PATH)
-        append("?email=").append(email.encodeURLParameter())
-        append("&googleIdToken=").append(idToken.encodeURLParameter())
     }
 }
 

@@ -1,8 +1,6 @@
 package coredevices.pebble.services
 
 import co.touchlab.kermit.Logger
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.bearerAuth
@@ -25,6 +23,7 @@ data class ContactAttachment(
 
 sealed class ContactResult {
     data object Success : ContactResult()
+    data object Unavailable : ContactResult()
     data object NotSignedIn : ContactResult()
     data object EmailNotVerified : ContactResult()
     data class NotContactable(val message: String) : ContactResult()
@@ -43,23 +42,20 @@ class ContactDeveloperApi(
 ) {
     private val logger = Logger.withTag("ContactDeveloperApi")
 
+    /** The legacy endpoint cannot authenticate a device-local identity. */
+    val isAvailable: Boolean = false
+
     suspend fun sendMessage(
         appId: String,
         message: String,
         attachments: List<ContactAttachment>,
     ): ContactResult {
-        // Force-refresh: a cached token retains stale `email_verified=false`
-        // claims after the user verifies their email this session.
-        val token = try {
-            Firebase.auth.currentUser?.getIdToken(true)
-        } catch (e: Exception) {
-            logger.w(e) { "Failed to get Firebase ID token" }
-            null
-        }
-        if (token == null) {
-            return ContactResult.NotSignedIn
-        }
+        // This endpoint authorizes with the former cloud account service. A
+        // device-local Apple identity cannot be presented to it, so leave
+        // contact delivery disabled until a direct account-server flow is added.
+        return ContactResult.Unavailable
 
+        /*
         val boundary = "----CoreAppContactBoundary${Random.nextLong().toString(16)}"
         val body = buildMultipartBody(boundary, message, attachments)
 
@@ -87,6 +83,7 @@ class ContactDeveloperApi(
             400 -> ContactResult.BadRequest(response.parseError() ?: "Message or attachment was rejected.")
             else -> ContactResult.ServerError(response.parseError() ?: "Server error ($code)")
         }
+        */
     }
 
     private fun buildMultipartBody(

@@ -76,7 +76,7 @@ data class RecordingEntryEntity(
     @Serializable(with = TolerantInstantSerializer::class)
     val timestamp: Instant = Clock.System.now(),
     /**
-     * The file name of the recording in Firebase Storage (under the user's recordings directory).
+     * The file name of the recording in the legacy cloud storage namespace.
      */
     val fileName: String? = null,
     /**
@@ -134,7 +134,7 @@ data class RecordingEntry(
     @Serializable(with = TolerantInstantSerializer::class)
     val timestamp: Instant,
     /**
-     * The file name of the recording in Firebase Storage (under the user's recordings directory).
+     * The file name of the recording in the legacy cloud storage namespace.
      */
     val fileName: String? = null,
     /**

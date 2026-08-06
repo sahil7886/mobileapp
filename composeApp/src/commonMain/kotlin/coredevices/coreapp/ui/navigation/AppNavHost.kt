@@ -5,8 +5,6 @@ import CoreNav
 import CoreRoute
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -18,13 +16,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import coredevices.EnableExperimentalDevices
-import coredevices.ExperimentalDevices
-import coredevices.ring.ui.navigation.RingRoute
 import coredevices.coreapp.ui.screens.BugReportScreen
 import coredevices.coreapp.ui.screens.BugReportsListScreen
 import coredevices.coreapp.ui.screens.OnboardingScreen
-import coredevices.coreapp.ui.screens.ringonboarding.RingOnboardingScreen
 import coredevices.coreapp.ui.screens.ViewBugReportScreen
 import coredevices.coreapp.ui.screens.WatchOnboardingScreen
 import coredevices.pebble.PebbleDeepLinkHandler
@@ -107,21 +101,13 @@ fun AppNavHost(navController: NavHostController, startDestination: Any) {
             }
         }
     }
-    val experimentalDevices: ExperimentalDevices = koinInject()
     NavHost(navController, startDestination = startDestination) {
-        experimentalDevices.addExperimentalRoutes(this, coreNav)
         addPebbleRoutes(
             coreNav,
-            indexScreen = { topBarParams, navBarNav, scopedCoreNav ->
-                // Use the inner-scoped CoreNav so detail navigations
-                // (RecordingDetails, ObjectDetails, FullFeed, ...) stay
-                // inside the bottom-nav chrome.
-                experimentalDevices.IndexScreen(scopedCoreNav, topBarParams)
-            },
-            addExperimentalRoutes = { scopedCoreNav ->
-                experimentalDevices.addExperimentalRoutes(this, scopedCoreNav)
-            },
-            isInnerScopedRoute = { it is RingRoute },
+            // Index/Ring's cloud feed is deliberately absent from the Pebble-only
+            // build. The route remains inert so the Pebble navigation graph does
+            // not need to change.
+            indexScreen = { _, _, _ -> },
         )
         if (CommonBuildKonfig.QA) {
             composable<CommonRoutes.BugReport>(
@@ -191,18 +177,11 @@ fun AppNavHost(navController: NavHostController, startDestination: Any) {
                     coreNav = coreNav,
                 )
             }
-            composable<CommonRoutes.RingOnboardingRoute> {
-                RingOnboardingScreen(
-                    coreNav = coreNav,
-                )
-            }
         }
     }
 }
 
 @Composable
 fun experimentsEnabled(): Boolean {
-    val enableExperimentalDevices: EnableExperimentalDevices = koinInject()
-    val enableExperiments by enableExperimentalDevices.enabled.collectAsState()
-    return enableExperiments
+    return false
 }

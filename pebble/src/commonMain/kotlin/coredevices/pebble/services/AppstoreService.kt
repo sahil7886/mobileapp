@@ -20,8 +20,6 @@ import coredevices.pebble.services.PebbleHttpClient.Companion.post
 import coredevices.pebble.ui.CommonApp
 import coredevices.pebble.ui.asCommonApp
 import coredevices.pebble.ui.cachedCategoriesOrDefaults
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
@@ -221,7 +219,7 @@ class AppstoreService(
     fun isLoggedIn(): Boolean {
         return when (source.url) {
             PEBBLE_FEED_URL -> {
-                Firebase.auth.currentUser != null
+                false
             }
             REBBLE_FEED_URL -> {
                 pebbleAccountProvider.isLoggedIn()

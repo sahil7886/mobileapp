@@ -40,11 +40,7 @@ import androidx.compose.ui.unit.dp
 import coredevices.coreapp.api.AtlasTicketDetails
 import coredevices.coreapp.api.BugReports
 import coredevices.ui.SignInButtons
-import coredevices.util.emailOrNull
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import coredevices.util.auth.LocalIdentityStore
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -61,11 +57,9 @@ fun BugReportsListScreen(
         var loading by remember { mutableStateOf(true) }
         var error by remember { mutableStateOf<String?>(null) }
 
-        // Get the authenticated user's email
-        val user by Firebase.auth.authStateChanged.map {
-            it?.emailOrNull
-        }.distinctUntilChanged()
-            .collectAsState(Firebase.auth.currentUser?.emailOrNull)
+        val identities: LocalIdentityStore = koinInject()
+        val identity by identities.identity.collectAsState()
+        val user = identity?.email ?: identity?.subject
 
         fun loadBugReports() {
             scope.launch {
@@ -79,7 +73,7 @@ fun BugReportsListScreen(
         LaunchedEffect(user) {
             // Clear data immediately when user changes (including sign out)
             if (user == null) {
-                error = "Please sign in to view your bug reports"
+                error = "Sign in with Apple to identify this device. The legacy cloud support inbox is unavailable in this build."
                 loading = false
             } else {
                 loadBugReports()
@@ -244,5 +238,4 @@ private fun TicketListItem(
         }
     )
 }
-
 

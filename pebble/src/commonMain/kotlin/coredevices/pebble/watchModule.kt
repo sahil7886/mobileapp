@@ -55,8 +55,6 @@ import coredevices.pebble.ui.WatchSettingsScreenViewModel
 import coredevices.pebble.weather.OpenWeather25Interceptor
 import coredevices.pebble.weather.WeatherFetcher
 import coredevices.pebble.weather.YahooWeatherInterceptor
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import dev.jordond.compass.geocoder.Geocoder
 import dev.jordond.compass.geocoder.MobileGeocoder
 import io.ktor.client.HttpClient
@@ -80,11 +78,7 @@ import io.rebble.libpebblecommon.voice.TranscriptionProvider
 import io.rebble.libpebblecommon.web.LockerEntry
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
@@ -106,9 +100,7 @@ val watchModule = module {
             get(),
             get(),
             get(),
-            flow { emitAll(Firebase.auth.idTokenChanged) }
-                .map { try { it?.getIdToken(false) } catch (e: Exception) { Logger.w(e) { "Failed to get ID token" }; null } }
-                .stateIn(GlobalScope, started = SharingStarted.Lazily, initialValue = null),
+            MutableStateFlow<String?>(null),
             get(),
             get(),
         )

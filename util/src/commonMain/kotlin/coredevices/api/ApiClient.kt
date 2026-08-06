@@ -1,8 +1,6 @@
 package coredevices.api
 
 import co.touchlab.kermit.Logger
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.compression.ContentEncoding
@@ -63,17 +61,10 @@ abstract class ApiClient(version: String, timeout: Duration = 30.seconds):
     }
 
     protected suspend fun requireUserToken(): String {
-        return try {
-            val user = Firebase.auth.currentUser ?: throw ApiAuthException("No user")
-            user.getIdToken(false) ?: throw ApiAuthException("Failed to get token")
-        } catch (e: ApiAuthException) {
-            throw e
-        } catch (e: Exception) {
-            throw ApiAuthException("Network error retrieving token", e)
-        }
+        throw ApiAuthException("This cloud endpoint requires an account service not present in the local-only iPhone build")
     }
 
-    protected suspend fun HttpRequestBuilder.firebaseAuth() {
+    protected suspend fun HttpRequestBuilder.requireCloudAuth() {
         val token = requireUserToken()
         bearerAuth(token)
     }

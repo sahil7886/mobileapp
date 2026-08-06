@@ -59,39 +59,6 @@ kotlin {
         ios.deploymentTarget = "15.6"
         podfile = project.file("../iosApp/Podfile")
 
-        pod("GoogleSignIn", "8.0.0")
-        pod("FirebaseCore", "11.10.0")
-        pod("FirebaseAuth") {
-            linkOnly = true
-            extraOpts += listOf("-compiler-option", "-fmodules")
-        }
-        pod("FirebaseFirestore") {
-            linkOnly = true
-            source = git("https://github.com/invertase/firestore-ios-sdk-frameworks.git") {
-                // 11.10.0 — pinned here by commit because the synthetic Podfile's lock lives
-                // under build/ and is never committed
-                commit = "e43715cc392c819b522c7a189bed9400e757c788"
-            }
-        }
-        // The binary FirebaseFirestoreInternal is static, so its C deps must be linked here
-        pod("nanopb") {
-            version = "3.30910.0"
-            linkOnly = true
-        }
-        pod("leveldb-library") {
-            version = "1.22.6"
-            moduleName = "leveldb"
-            linkOnly = true
-        }
-        pod("FirebaseStorage") {
-            linkOnly = true
-        }
-        pod("FirebaseCrashlytics") {
-            linkOnly = true
-        }
-        pod("FirebaseMessaging") {
-            linkOnly = true
-        }
 
         framework {
             baseName = "ComposeApp"
@@ -118,24 +85,6 @@ kotlin {
                     "-L$xcodeDir/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$osName"
                 ))
             }
-            // The binary FirebaseFirestoreInternal is static, so its C deps must be linked into
-            // every binary that pulls in Firestore, not just the pod framework.
-            val grpcSlice = if (target.konanTarget.name.contains("simulator")) {
-                "ios-arm64_x86_64-simulator"
-            } else {
-                "ios-arm64"
-            }
-            listOf(
-                "FirebaseFirestoreGRPCCoreBinary/grpc.xcframework" to "grpc",
-                "FirebaseFirestoreGRPCCPPBinary/grpcpp.xcframework" to "grpcpp",
-                "FirebaseFirestoreGRPCBoringSSLBinary/openssl_grpc.xcframework" to "openssl_grpc",
-                "FirebaseFirestoreAbseilBinary/absl.xcframework" to "absl",
-            ).forEach { (path, fw) ->
-                val sliceDir = layout.buildDirectory
-                    .dir("cocoapods/synthetic/ios/Pods/$path/$grpcSlice")
-                    .get().asFile
-                linkerOpts.addAll(listOf("-F" + sliceDir.absolutePath, "-framework", fw))
-            }
         }
     }
     
@@ -152,7 +101,6 @@ kotlin {
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
-            implementation(libs.crashkios)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -181,9 +129,6 @@ kotlin {
             implementation(libs.coil)
             implementation(libs.coil.svg)
 
-            implementation(libs.firebase.auth)
-            implementation(libs.firebase.firestore)
-            implementation(libs.firebase.crashlytics)
 
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.contentNegotiation)
@@ -192,7 +137,6 @@ kotlin {
             implementation(libs.coroutines)
             implementation(project(":pebble"))
             implementation(project(":util"))
-            implementation(project(":experimental"))
             implementation(libs.kmpnotifier)
             implementation(libs.kmpio)
             implementation(project(":libpebble3"))

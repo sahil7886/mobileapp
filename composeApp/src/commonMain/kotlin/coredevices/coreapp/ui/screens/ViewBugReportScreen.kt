@@ -48,9 +48,6 @@ import coredevices.pebble.Platform
 import coredevices.ui.PebbleWebview
 import coredevices.ui.PebbleWebviewNavigator
 import coredevices.ui.PebbleWebviewUrlInterceptor
-import coredevices.util.emailOrNull
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.ktor.http.Url
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource

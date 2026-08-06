@@ -8,23 +8,17 @@ import com.oldguy.common.io.ZipEntry
 import com.oldguy.common.io.ZipFile
 import com.russhwolf.settings.Settings
 import coredevices.CoreBackgroundSync
-import coredevices.ExperimentalDevices
 import coredevices.coreapp.api.BugApi
 import coredevices.coreapp.util.FileLogWriter
 import coredevices.coreapp.util.generateDeviceSummary
 import coredevices.coreapp.util.getLogsCacheDir
 import coredevices.pebble.PebbleAppDelegate
-import coredevices.pebble.ui.SettingsKeys.KEY_ENABLE_FIREBASE_UPLOADS
 import coredevices.pebble.ui.SettingsKeys.KEY_ENABLE_MEMFAULT_UPLOADS
-import coredevices.pebble.ui.SettingsKeys.KEY_ENABLE_MIXPANEL_UPLOADS
-import coredevices.ring.util.trace.TraceSessionExporter
 import coredevices.util.CompanionDevice
 import coredevices.util.CoreConfigFlow
 import coredevices.util.PermissionRequester
 import coredevices.util.models.CactusSTTMode
 import coredevices.util.transcription.HybridTranscriptionService
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.rebble.libpebblecommon.connection.AppContext
 import io.rebble.libpebblecommon.connection.KnownPebbleDevice
 import io.rebble.libpebblecommon.connection.LibPebble
@@ -121,7 +115,6 @@ expect fun stopForegroundService()
 
 class BugReportProcessor(
     private val logWriter: FileLogWriter,
-    private val experimentalDevices: ExperimentalDevices,
     private val bugApi: BugApi,
     private val pebbleAppDelegate: PebbleAppDelegate,
     private val clock: Clock,
@@ -285,7 +278,7 @@ class BugReportProcessor(
         screenContext: String,
         attachments: List<DocumentAttachment>
     ): String {
-        val deviceSummary = generateDeviceSummary(experimentalDevices)
+        val deviceSummary = generateDeviceSummary()
         val pkjsSummary = getPKJSSummary()
         val sttSummary = getSTTSummary()
         val pebbleContext = pebbleScreenContext()
@@ -304,9 +297,7 @@ class BugReportProcessor(
             }
             append("\nTime since last full background sync: ${coreBackgroundSync.timeSinceLastSync()}")
             append("\nAnalytics settings:")
-            append("\nFirebase uploads enabled: ${settings.getBoolean(KEY_ENABLE_FIREBASE_UPLOADS, true)}")
             append("\nMemfault uploads enabled: ${settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)}")
-            append("\nMixpanel uploads enabled: ${settings.getBoolean(KEY_ENABLE_MIXPANEL_UPLOADS, true)}")
         }
         return summaryWithAttachmentCount
     }
@@ -448,14 +439,8 @@ class BugReportProcessor(
             }
         }
         GlobalScope.launch(Dispatchers.IO) {
-            val userIdToken = try {
-                Firebase.auth.currentUser?.getIdToken(true)
-            } catch (e: Exception) {
-                logger.e(e) { "No user token: ${e.message}" }
-                null
-            }
             try {
-                block(state, userIdToken)
+                block(state, null)
             } catch (e: Exception) {
                 logger.e(e) { "Unhandled exception in bug report processing" }
                 state.tryEmit(BugReportState.BugReportResult.Failed("An unexpected error occurred"))
@@ -494,87 +479,9 @@ class BugReportProcessor(
             )
         )
 
-        // Add recording if requested
-        if (params.sendRecording && params.expOutputPath != null) {
-            withContext(Dispatchers.IO) {
-                attachments.addAll(experimentalDevices.exportOutput(params.expOutputPath))
-            }
-        }
-
-        // Add the last few recordings + their data for Index bug reports
-        if (params.sendRecentRecordings) {
-            try {
-                attachments.addAll(experimentalDevices.exportRecentRecordings())
-            } catch (e: Exception) {
-                logger.e(e) { "Failed to gather recent recordings" }
-            }
-        }
-
-        // Add debug info files
-        if (params.includeExperimentalDebugInfo) {
-            val experimentalDebugInfoPath = getExperimentalDebugInfoDirectory()
-            try {
-                if (SystemFileSystem.exists(Path(experimentalDebugInfoPath))) {
-                    val experimentalDebugDumps = Json.encodeToString(
-                        SystemFileSystem.list(Path(experimentalDebugInfoPath))
-                            .sortedByDescending { it.name }
-                            .take(10)
-                            .fold(mutableListOf<JsonObject>()) { list, filePath ->
-                                list.add(SystemFileSystem.source(filePath).buffered().use {
-                                    Json.decodeFromString(it.readString())
-                                })
-                                list
-                            }
-                    )
-                    val buffer = Buffer().apply { writeString(experimentalDebugDumps) }
-                    attachments.add(
-                        DocumentAttachment(
-                            fileName = "combined_experimental_debug_info.json",
-                            mimeType = "application/json",
-                            buffer,
-                            size = buffer.size,
-                        )
-                    )
-                }
-                experimentalDevices.badCollectionsDir()?.let {
-                    SystemFileSystem.list(it)
-                        .sortedByDescending { it.name }
-                        .take(4)
-                        .forEach { filePath ->
-                            attachments.add(
-                                DocumentAttachment(
-                                    fileName = filePath.name,
-                                    mimeType = "application/octet-stream",
-                                    source = SystemFileSystem.source(filePath).buffered(),
-                                    size = filePath.size(),
-                                )
-                            )
-                        }
-                }
-            } catch (e: Exception) {
-                logger.e(e) { "Failed to collect experimental debug info files" }
-            }
-
-            try {
-                val exporter = KoinPlatform.getKoin().getOrNull<TraceSessionExporter>()
-                if (exporter != null) {
-                    val sessions = exporter.exportLastNSessions(20)
-                    if (sessions.isNotEmpty()) {
-                        val traceBytes = Json.encodeToString(sessions).encodeToByteArray()
-                        attachments.add(
-                            DocumentAttachment(
-                                fileName = "ring_trace_sessions.json",
-                                mimeType = "application/json",
-                                source = sourceFromByteArray(traceBytes),
-                                size = traceBytes.size.toLong(),
-                            )
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                logger.e(e) { "Failed to collect ring trace sessions" }
-            }
-        }
+        // Index/Ring recordings and their cloud diagnostics are intentionally
+        // excluded from this Pebble-only product. Pebble logs and user-selected
+        // attachments continue below.
 
         if (params.fetchPebbleLogs) {
             attachments.addAll(getPebbleLogFile())
@@ -753,4 +660,3 @@ fun Path?.readMostRecent(bytes: Int): String? {
         null
     }
 }
-

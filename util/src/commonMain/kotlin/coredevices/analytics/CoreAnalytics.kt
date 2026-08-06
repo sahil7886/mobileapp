@@ -5,9 +5,6 @@ import com.russhwolf.settings.Settings
 import com.russhwolf.settings.set
 import coredevices.database.HeartbeatStateDao
 import coredevices.database.HeartbeatStateEntity
-import coredevices.util.emailOrNull
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
 import io.rebble.libpebblecommon.metadata.WatchHardwarePlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -64,7 +61,7 @@ class RealCoreAnalytics(
         val heartbeatMetrics = processHeartbeatStates() +
                 HeartbeatMetric("heartbeat_duration_ms", duration.inWholeMilliseconds) +
                 HeartbeatMetric("last_connected_serial", lastConnectedSerial.value ?: "<none>") +
-                HeartbeatMetric("core_user_id", Firebase.auth.currentUser?.emailOrNull ?: "<none>") +
+                HeartbeatMetric("core_user_id", "<local>") +
                 HeartbeatMetric(
                     "ring.transfer_duration_total_ms",
                     withContext(Dispatchers.IO) {

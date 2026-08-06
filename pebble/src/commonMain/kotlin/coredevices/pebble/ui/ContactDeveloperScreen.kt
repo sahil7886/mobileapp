@@ -53,9 +53,7 @@ import coredevices.pebble.services.ContactResult
 import coredevices.ui.SignInDialog
 import coredevices.util.Platform
 import coredevices.util.isIOS
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
-import kotlinx.coroutines.flow.map
+import coredevices.util.auth.LocalIdentityStore
 import kotlinx.coroutines.launch
 import kotlinx.io.readByteArray
 import org.jetbrains.compose.resources.stringResource
@@ -78,9 +76,9 @@ fun ContactDeveloperScreen(
     val scope = rememberCoroutineScope()
     val logger = remember { Logger.withTag("ContactDeveloperScreen") }
 
-    val signedIn by Firebase.auth.authStateChanged
-        .map { it != null }
-        .collectAsState(Firebase.auth.currentUser != null)
+    val identities: LocalIdentityStore = koinInject()
+    val identity by identities.identity.collectAsState()
+    val signedIn = identity != null
 
     var showSignInDialog by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
@@ -146,6 +144,7 @@ fun ContactDeveloperScreen(
             }
             when (result) {
                 ContactResult.Success -> sent = true
+                ContactResult.Unavailable -> error = "Contacting developers is not available in this local-only iPhone build."
                 ContactResult.NotSignedIn -> error = "Please sign in again."
                 ContactResult.EmailNotVerified ->
                     error = "Your email address must be verified before contacting developers."
@@ -199,6 +198,14 @@ fun ContactDeveloperScreen(
                 Spacer(Modifier.height(12.dp))
 
                 when {
+                    !api.isAvailable -> {
+                        Text(
+                            "Contacting developers is not available in this local-only iPhone build.",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
                     sent -> {
                         Text(
                             "Message sent. The developer will receive an email and may reply to you directly.",

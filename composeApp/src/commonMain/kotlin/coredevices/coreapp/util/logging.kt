@@ -3,9 +3,6 @@ package coredevices.coreapp.util
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import coredevices.ExperimentalDevices
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.crashlytics.crashlytics
 import io.ktor.utils.io.core.append
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,15 +33,8 @@ import org.koin.mp.KoinPlatform
 fun initLogging() {
     Logger.addLogWriter(object : LogWriter() {
         override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            if (severity != Severity.Verbose) {
-                val log = buildString {
-                    append("[$tag] $message")
-                }
-                Firebase.crashlytics.log(log)
-            }
-            if (severity != Severity.Debug && severity != Severity.Verbose) {
-                throwable?.let { Firebase.crashlytics.recordException(it) }
-            }
+            // Xcode's device console and the local FileLogWriter below are the
+            // diagnostics sinks for this iPhone-only build.
         }
     })
     Logger.addLogWriter(KoinPlatform.getKoin().get<FileLogWriter>())
@@ -57,11 +47,7 @@ fun initLogging() {
 
 expect fun generateDeviceSummaryPlatformDetails(): String
 
-fun generateDeviceSummary(experimentalDevices: ExperimentalDevices): String {
-    val deviceSummary = generateDeviceSummaryPlatformDetails()
-    val experimentalSummary = experimentalDevices.debugSummary()
-    return deviceSummary + "\n" + (experimentalSummary ?: "")
-}
+fun generateDeviceSummary(): String = generateDeviceSummaryPlatformDetails()
 
 class FileLogWriter : LogWriter(), AutoCloseable {
     private val logScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
