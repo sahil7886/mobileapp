@@ -10,14 +10,17 @@ package coredevices.pebble.health
 data class HeartRateExportSample(
     val timestampSeconds: Long,
     val beatsPerMinute: Int,
+    /** Stable source identity; minute health records retain their historic timestamp-only value. */
+    val sourceRecordId: String = timestampSeconds.toString(),
 ) {
     init {
         require(timestampSeconds > 0) { "Heart-rate timestamp must be positive" }
         require(beatsPerMinute in 1..300) { "Heart rate must be between 1 and 300 bpm" }
+        require(sourceRecordId.isNotBlank()) { "Heart-rate source record ID must not be blank" }
     }
 
     val syncIdentifier: String
-        get() = "coredevices.pebble.health.hr.v1.$timestampSeconds"
+        get() = "coredevices.pebble.health.hr.v1.$sourceRecordId"
 }
 
 enum class HealthWriteAuthorization {

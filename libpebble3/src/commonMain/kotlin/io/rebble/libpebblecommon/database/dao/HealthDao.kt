@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
+import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -15,6 +16,34 @@ interface HealthDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOverlayData(data: List<OverlayDataEntity>)
+
+    /**
+     * DataLogging retries can replay an already persisted batch.  IGNORE makes that harmless while
+     * preserving the original record and its Apple Health export state.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertGranularHeartRate(data: List<GranularHeartRateEntity>): List<Long>
+
+    @Query("""
+        SELECT * FROM granular_heart_rate
+        WHERE exportedToAppleHealth = 0 AND filteredBpm BETWEEN 1 AND 300
+        ORDER BY timestampEpochSeconds ASC, sequence ASC
+        LIMIT :limit
+        """)
+    suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity>
+
+    @Query("""
+        UPDATE granular_heart_rate
+        SET exportedToAppleHealth = 1
+        WHERE recordId IN (:recordIds)
+        """)
+    suspend fun markGranularHeartRateExported(recordIds: List<String>): Int
+
+    @Query("""
+        SELECT COUNT(*) FROM granular_heart_rate
+        WHERE exportedToAppleHealth = 0 AND filteredBpm BETWEEN 1 AND 300
+        """)
+    suspend fun countPendingGranularHeartRate(): Int
 
     @Query("SELECT * FROM health_data WHERE timestamp >= :start AND timestamp <= :end ORDER BY timestamp ASC")
     fun getHealthData(start: Long, end: Long): Flow<List<HealthDataEntity>>

@@ -1,0 +1,22 @@
+{
+  "name": "health-capture",
+  "author": "Core Devices health-sync fork",
+  "version": "0.1.0",
+  "keywords": ["pebble-app", "health", "workout"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Health Capture",
+    "uuid": "4bb21e88-26a9-4039-9d04-082bff71073e",
+    "sdkVersion": "4",
+    "enableMultiJS": false,
+    "targetPlatforms": ["emery"],
+    "capabilities": ["health"],
+    "watchapp": {
+      "watchface": false
+    },
+    "resources": {
+      "media": []
+    }
+  }
+}

@@ -108,7 +108,7 @@ internal actual class NativeHeartRateExporter {
                 HK_METADATA_SYNC_VERSION to SYNC_VERSION,
                 HK_METADATA_WAS_USER_ENTERED to false,
                 HK_METADATA_EXTERNAL_UUID to sample.syncIdentifier,
-                METADATA_PEBBLE_SEQUENCE to sample.timestampSeconds.toString(),
+                METADATA_PEBBLE_SEQUENCE to sample.sourceRecordId,
                 METADATA_PEBBLE_DEVICE to "Pebble Time 2",
             ),
         )

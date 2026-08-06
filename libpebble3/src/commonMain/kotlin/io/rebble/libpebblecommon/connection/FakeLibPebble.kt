@@ -27,6 +27,7 @@ import io.rebble.libpebblecommon.database.entity.ChannelGroup
 import io.rebble.libpebblecommon.database.entity.ChannelItem
 import io.rebble.libpebblecommon.database.entity.HRMonitoringInterval
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
+import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.HealthGender
 import io.rebble.libpebblecommon.database.entity.MuteState
 import io.rebble.libpebblecommon.database.entity.NotificationAppItem
@@ -469,6 +470,12 @@ class FakeLibPebble : LibPebble {
     override suspend fun getLatestTimestamp(): Long? = 0
 
     override suspend fun getHealthDataAfter(afterTimestamp: Long): List<HealthDataEntity> = emptyList()
+
+    override suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity> = emptyList()
+
+    override suspend fun markGranularHeartRateExported(recordIds: List<String>): Int = recordIds.size
+
+    override suspend fun countPendingGranularHeartRate(): Int = 0
 
     override suspend fun getOverlayEntriesAfter(
         afterTimestamp: Long,

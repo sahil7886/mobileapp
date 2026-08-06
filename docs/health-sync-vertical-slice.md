@@ -1,4 +1,4 @@
-# Pebble Time 2 → Apple Health: first vertical slice
+# Pebble Time 2 → Apple Health: heart-rate export and workout capture
 
 ## Scope
 
@@ -6,7 +6,7 @@ This slice uses the existing Core Devices mobile app Bluetooth connection and li
 Datalogging. It does not open a second Bluetooth connection and it does not depend on a phone
 being connected when the watch collects data.
 
-The watch firmware's system-health stream is the source for this slice:
+The first, minute-level path uses the watch firmware's system-health stream:
 
 1. The watch persists minute health data and delivers it through Datalogging when the existing
    companion connection synchronizes.
@@ -14,7 +14,16 @@ The watch firmware's system-health stream is the source for this slice:
 3. `PlatformHealthSync` independently checkpoints valid heart-rate points.
 4. On iOS, `NativeHeartRateExporter` writes one `HKQuantitySample` per point to Apple Health.
 
-No high-rate raw stream uses AppMessage.
+The optional `watchapps/health-capture` Emery watch app adds a separate, high-resolution workout
+path. Starting a workout in its foreground app launches a worker that requests a 1, 5, or 15
+second rate (5 seconds by default), captures the HealthService readings delivered to apps, and
+writes versioned 16-byte records using DataLogging. The worker has no Bluetooth connection of its
+own. The companion persists each received packet before ACKing it, then exports filtered samples to
+Apple Health in batches of 100. Neither path uses AppMessage for sensor data.
+
+The Pebble SDK does not promise that a `HealthEventHeartRateUpdate` corresponds to every internal
+sensor measurement. “High-resolution” here means every API-visible event, bounded by the selected
+recording interval; it must be verified on real Time 2 hardware.
 
 ## HealthKit contract
 
@@ -22,12 +31,12 @@ No high-rate raw stream uses AppMessage.
 | --- | --- |
 | Type | `HKQuantityTypeIdentifierHeartRate` |
 | Unit | `HKUnit.countUnit() / HKUnit.minuteUnit()` (`count/min`) |
-| Timestamp | The Pebble minute-record UTC timestamp; point samples use identical start/end dates |
+| Timestamp | The Pebble minute-record or worker-record UTC timestamp; point samples use identical start/end dates |
 | Source | Set automatically by HealthKit to this mobile app's `HKSourceRevision` |
-| Sync identity | `HKSyncIdentifier=coredevices.pebble.health.hr.v1.<timestamp>` |
+| Sync identity | `HKSyncIdentifier=coredevices.pebble.health.hr.v1.<source record ID>` |
 | Sync version | `HKSyncVersion=1` |
 | Extra metadata | External UUID plus Pebble sequence timestamp and device label |
-| Duplicate behavior | Retry has the same sync identifier/version; HealthKit treats it as the same synchronized object |
+| Duplicate behavior | Minute records retain their timestamp identity; worker records use persistent workout + sequence IDs. A retry uses the same sync identifier/version. |
 
 The app requests only sharing permission for the vertical-slice heart-rate writer. Therefore it
 does not inspect other Apple Health sources and the export screen truthfully reports conflicts as
@@ -39,18 +48,22 @@ does not inspect other Apple Health sources and the export screen truthfully rep
    app on a physical iPhone. The HealthKit entitlement and usage descriptions are in the project.
 2. Pair the Pebble Time 2 with this fork. Do not allow another companion app to own the connection
    while testing.
-3. In the app's Health settings, enable Health Tracking and Heart Rate Monitor. For an activity
-   test, enable **HR During Activities**. Keep the default background cadence initially.
-4. Wear the watch until it records a heart-rate sample, then let the normal health sync complete.
-   The existing health debug action can request a full history sync when needed.
+3. Install the `watchapps/health-capture` `.pbw` built with the Emery-capable Pebble SDK. On the
+   watch, open **Health Capture**, choose 5 seconds with Up/Down, and press Select to start a
+   workout. Approve it as the Background App if Pebble asks. Do not start another worker while it
+   is active.
+4. Wear the watch for at least five minutes, stop the workout with Select, then allow the normal
+   companion DataLogging sync to complete. Records may transfer while the session is active or as
+   a batch afterwards; either way, no phone connection is required for the watch to retain them.
 5. Open **Health → Apple Health export status**, choose **Allow Apple Health export**, and grant
    Heart Rate sharing. Press **Sync now**.
-6. Check the status page: platform is available, permission is allowed, pending records becomes
-   zero, failed records is zero, and the last successful sync advances.
-7. In Apple Health, inspect Heart Rate and confirm a point at the Pebble timestamp with this app as
-   source. Press **Sync now** a second time and confirm that Apple Health does not gain a duplicate
-   point.
-8. Only after step 7 succeeds, open Bevel and check whether that Apple Health record is visible.
+6. Check the status page: platform is available, permission is allowed, **Pending workout HR
+   records** becomes zero, failed records is zero, and the last successful sync advances.
+7. In Apple Health, inspect Heart Rate and confirm filtered points at the Pebble timestamps with
+   this app as source. Measure their spacing and check for repeated/stale values; do not assume the
+   requested 5-second cadence was delivered. Press **Sync now** a second time and confirm that
+   Apple Health does not gain duplicate points.
+8. Only after step 7 succeeds, open Bevel and check whether those Apple Health records are visible.
    Record the iOS version, app build, timestamp, Apple Health screenshot, and Bevel result. A
    missing Bevel display is a test failure/compatibility finding, not evidence that the export
    succeeded.
@@ -58,16 +71,18 @@ does not inspect other Apple Health sources and the export screen truthfully rep
 ## Sampling and HRV gates
 
 The Pebble SDK documents a default 10-minute adaptive HR sample period and permits a watch app to
-*request* 1–600 seconds, without guaranteeing the actual period. The practical Time 2 cadence and
-battery impact must be measured on hardware before changing firmware defaults. Start a workout
-trial at 5 seconds, 15 seconds, 30 seconds, and 60 seconds; capture actual timestamp spacing,
-battery loss per hour, sensor quality, and watch temperature. Select the lowest-impact cadence that
-still meets workout-chart requirements.
+*request* 1–600 seconds, without guaranteeing the actual period. The worker's 5-second default is
+a conservative experiment, not a proven production recommendation. Run 1-, 5-, and 15-second
+trials; capture actual timestamp spacing, battery loss per hour, sensor quality, dropped-log counts,
+and watch temperature. Select the lowest-impact cadence that still meets workout-chart requirements.
+The 1-second option matches Pebble's built-in workout request but must not be described as
+high-quality or battery-safe until this validation is complete.
 
-Apple Health's HRV type is SDNN in milliseconds. The documented Pebble Health API supplies BPM and
-minute history, not RR intervals, so this slice cannot honestly calculate or export overnight HRV.
-Do not write RMSSD values into the SDNN type and do not claim Bevel compatibility until a physical
-Apple Health + Bevel test passes.
+Apple Health's HRV type is SDNN in milliseconds. Current PebbleOS source contains an opt-in PPI
+(peak-to-peak interval) API, but this worker does not yet collect it. First verify that the shipped
+Time 2 firmware exposes it, capture enough quality-controlled overnight intervals, and validate the
+SDNN algorithm. Do not write RMSSD values into the SDNN type or claim Bevel compatibility until a
+physical Apple Health + Bevel test passes.
 
 ## Confirmed HealthKit mapping for later slices
 
@@ -87,9 +102,9 @@ For a point sample its end date equals its start date. The relevant primary docu
 - https://developer.apple.com/documentation/healthkit/adding-samples-to-a-workout
 - https://developer.apple.com/documentation/healthkit/hkmetadatakeysyncidentifier
 
-## Next watch-side implementation
+## Worker implementation status
 
-The dedicated workout worker should declare the `health` capability, use `HealthService`, use
-`DataLogging` for local-first batched transfer, and persist a monotonically increasing sequence ID
-plus an acknowledged export checkpoint. It must reset any elevated
-`health_service_set_heart_rate_sample_period` request when the workout ends or the worker exits.
+The watch source is in `watchapps/health-capture`. Its binary record format, DataLogging receiver,
+Room deduplication, and Apple Health write path are implemented in this fork. They have not yet
+been compiled with the current Emery SDK or exercised on a physical Time 2/iPhone, so cadence,
+battery behavior, and Bevel visibility remain validation gates rather than completion claims.

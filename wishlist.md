@@ -12,12 +12,16 @@
 - [x] Add Apple Health export status for availability, write permission, last successful sync,
   pending records, failures, last error, and the intentionally uninspected source-conflict state.
 - [x] Add diagnostics for HealthKit writes and retained checkpoints after failures.
+- [x] Add an Emery Health Capture watch app + background worker that records filtered/raw workout
+  HR with UTC timestamps and persistent sequence IDs through local-first Datalogging.
+- [x] Persist worker records before DataLogging ACK, deduplicate them by workout + sequence ID, and
+  export filtered points through replay-safe HealthKit sync identifiers.
 
 ## Partial / requires physical validation
 
-- [~] Heart rate during activities and time in zones: the existing firmware already exposes
-  activity HR tracking and per-minute zones. Verify it on Pebble Time 2, then associate exported
-  heart-rate points with workout records in the native HealthKit writer.
+- [~] Heart rate during activities and time in zones: the worker records more granular filtered
+  readings during manually started workouts. Verify Time 2 event frequency, battery impact, sensor
+  quality, and Apple Health export; HR samples are not yet associated with `HKWorkout` records.
 - [~] Sleep detection: existing sleep/deep-sleep overlays export through the cross-platform path;
   validate boundaries and quality before changing the algorithm.
 - [~] Workout detection: existing walk/run/open-workout overlays export as workouts. Detection
@@ -29,14 +33,12 @@
 
 ## Blocked / do not claim until verified
 
-- [ ] More-frequent background HR sampling: current firmware exposes 10-minute, 30-minute, and
-  hourly preferences, while the SDK lets an app request 1-600 second sampling only as a battery-
-  and quality-dependent suggestion. Determine a Pebble Time 2 battery budget with a real watch
-  before selecting a production cadence.
-- [ ] Dedicated Pebble watch app/worker: design it around HealthService + Datalogging with local
-  sequence IDs and storage checkpoints. Do not use AppMessage for its raw HR stream.
-- [ ] Overnight HRV: Pebble's documented HealthService gives BPM and minute history, not beat-to-
-  beat intervals. A valid SDNN computation needs an experimentally verified interval source.
+- [ ] Production workout HR cadence: the worker can request 1/5/15 seconds, but the SDK treats
+  the value as a battery- and quality-dependent suggestion. Determine a Time 2 battery budget and
+  observed timestamp spacing before choosing a default.
+- [ ] Overnight HRV: current PebbleOS source contains an opt-in PPI (peak-to-peak interval) API,
+  but the worker does not yet collect it. Verify Time 2 firmware support, interval quality, and a
+  valid SDNN algorithm before writing `HKQuantityTypeIdentifierHeartRateVariabilitySDNN`.
 - [ ] Bevel HRV: Apple Health requires HRV as SDNN milliseconds. Direct overnight SDNN export and
   Bevel display remain unverified; do not claim either until tested in Apple Health and Bevel.
 - [ ] Bevel heart-rate display: Apple Health acceptance is implemented, but appearance in Bevel is

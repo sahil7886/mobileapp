@@ -29,4 +29,18 @@ class NativeHeartRateExporterTest {
             HeartRateExportSample(timestampSeconds = 0, beatsPerMinute = 60)
         }
     }
+
+    @Test
+    fun workerRecordsUseTheirPersistentWorkoutAndSequenceIdentity() {
+        val sample = HeartRateExportSample(
+            timestampSeconds = 1_725_000_005,
+            beatsPerMinute = 145,
+            sourceRecordId = "health-capture-v1:1725000000:39",
+        )
+
+        assertEquals(
+            "coredevices.pebble.health.hr.v1.health-capture-v1:1725000000:39",
+            sample.syncIdentifier,
+        )
+    }
 }

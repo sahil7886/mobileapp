@@ -8,6 +8,7 @@ import io.rebble.libpebblecommon.connection.LatestHeartRate
 import io.rebble.libpebblecommon.connection.WatchManager
 import io.rebble.libpebblecommon.database.dao.HealthDao
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
+import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.HRMonitoringInterval
 import io.rebble.libpebblecommon.database.entity.HealthGender
 import io.rebble.libpebblecommon.database.entity.HealthSettingsEntryDao
@@ -181,6 +182,15 @@ class Health(
 
     override suspend fun getHealthDataAfter(afterTimestamp: Long): List<HealthDataEntity> =
         healthDao.getHealthDataAfter(afterTimestamp)
+
+    override suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity> =
+        healthDao.getPendingGranularHeartRate(limit)
+
+    override suspend fun markGranularHeartRateExported(recordIds: List<String>): Int =
+        if (recordIds.isEmpty()) 0 else healthDao.markGranularHeartRateExported(recordIds)
+
+    override suspend fun countPendingGranularHeartRate(): Int =
+        healthDao.countPendingGranularHeartRate()
 
     override suspend fun getOverlayEntriesAfter(
         afterTimestamp: Long,

@@ -14,10 +14,16 @@ import kotlin.uuid.Uuid
 class Datalogging(
     private val webServices: WebServices,
     private val healthDataProcessor: HealthDataProcessor,
+    private val healthCaptureDataProcessor: HealthCaptureDataProcessor,
 ) {
     private val logger = Logger.withTag("Datalogging")
 
-    fun logData(
+    /**
+     * Returns whether this payload may be ACKed to the watch.  Health Capture records are inserted
+     * durably before returning true, so a process death or Bluetooth retry cannot silently lose
+     * a high-resolution workout sample.
+     */
+    suspend fun logData(
         sessionId: UByte,
         uuid: Uuid,
         tag: UInt,
@@ -25,11 +31,17 @@ class Datalogging(
         watchInfo: WatchInfo,
         itemSize: UShort,
         itemsLeft: UInt,
-    ) {
+    ): Boolean {
         // Handle health tags
         if (tag in HealthDataProcessor.HEALTH_TAGS) {
             healthDataProcessor.handleSendDataItems(sessionId, data, itemsLeft)
-            return
+            return true
+        }
+
+        if (uuid == HealthCaptureProtocol.APPLICATION_UUID &&
+            tag == HealthCaptureProtocol.HEART_RATE_RECORD_TAG
+        ) {
+            return healthCaptureDataProcessor.process(data, itemSize)
         }
 
         // Handle system-app datalogging tags
@@ -53,7 +65,7 @@ class Datalogging(
                     val size = itemSize.toInt()
                     if (size <= 0) {
                         logger.w { "Analytics heartbeat with itemSize=$size; ignoring" }
-                        return
+                        return true
                     }
                     var offset = 0
                     while (offset + size <= data.size) {
@@ -64,17 +76,26 @@ class Datalogging(
                 }
             }
         }
+        return true
     }
 
     fun openSession(sessionId: UByte, tag: UInt, applicationUuid: Uuid, itemSize: UShort) {
         if (tag in HealthDataProcessor.HEALTH_TAGS) {
             healthDataProcessor.handleSessionOpen(sessionId, tag, applicationUuid, itemSize)
         }
+        if (applicationUuid == HealthCaptureProtocol.APPLICATION_UUID &&
+            tag == HealthCaptureProtocol.HEART_RATE_RECORD_TAG
+        ) {
+            logger.d { "HEALTH_CAPTURE_DATALOG session=$sessionId itemSize=$itemSize opened" }
+        }
     }
 
     fun closeSession(sessionId: UByte, tag: UInt) {
         if (tag in HealthDataProcessor.HEALTH_TAGS) {
             healthDataProcessor.handleSessionClose(sessionId)
+        }
+        if (tag == HealthCaptureProtocol.HEART_RATE_RECORD_TAG) {
+            logger.d { "HEALTH_CAPTURE_DATALOG session=$sessionId closed" }
         }
     }
 

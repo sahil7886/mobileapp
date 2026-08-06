@@ -90,6 +90,7 @@ private fun HealthExportStatusRows(status: HealthExportStatus) {
     StatusRow("Heart-rate permission", status.heartRateAuthorization.toDisplayName())
     StatusRow("Last successful sync", status.lastSuccessfulSyncEpochSeconds.toDisplayTime())
     StatusRow("Pending heart-rate records", status.pendingHeartRateRecords.toString())
+    StatusRow("Pending workout HR records", status.pendingGranularHeartRateRecords.toString())
     StatusRow("Failed heart-rate records", status.failedHeartRateRecords.toString())
     StatusRow("Data-source conflicts", status.dataSourceConflicts)
 }

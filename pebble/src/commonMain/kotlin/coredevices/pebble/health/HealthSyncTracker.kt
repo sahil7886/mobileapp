@@ -12,6 +12,7 @@ data class HealthExportStatus(
     val heartRateAuthorization: HealthWriteAuthorization,
     val lastSuccessfulSyncEpochSeconds: Long,
     val pendingHeartRateRecords: Int,
+    val pendingGranularHeartRateRecords: Int,
     val failedHeartRateRecords: Int,
     val lastError: String?,
     /**
@@ -74,11 +75,13 @@ class HealthSyncTracker(private val settings: Settings) {
         healthPlatformAvailable: Boolean = _status.value.healthPlatformAvailable,
         heartRateAuthorization: HealthWriteAuthorization = _status.value.heartRateAuthorization,
         pendingHeartRateRecords: Int = _status.value.pendingHeartRateRecords,
+        pendingGranularHeartRateRecords: Int = _status.value.pendingGranularHeartRateRecords,
     ) {
         _status.value = snapshot(
             healthPlatformAvailable = healthPlatformAvailable,
             heartRateAuthorization = heartRateAuthorization,
             pendingHeartRateRecords = pendingHeartRateRecords,
+            pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
         )
     }
 
@@ -101,6 +104,7 @@ class HealthSyncTracker(private val settings: Settings) {
             healthPlatformAvailable = _status.value.healthPlatformAvailable,
             heartRateAuthorization = _status.value.heartRateAuthorization,
             pendingHeartRateRecords = _status.value.pendingHeartRateRecords,
+            pendingGranularHeartRateRecords = _status.value.pendingGranularHeartRateRecords,
         )
     }
 
@@ -108,11 +112,13 @@ class HealthSyncTracker(private val settings: Settings) {
         healthPlatformAvailable: Boolean = false,
         heartRateAuthorization: HealthWriteAuthorization = HealthWriteAuthorization.NotDetermined,
         pendingHeartRateRecords: Int = 0,
+        pendingGranularHeartRateRecords: Int = 0,
     ): HealthExportStatus = HealthExportStatus(
         healthPlatformAvailable = healthPlatformAvailable,
         heartRateAuthorization = heartRateAuthorization,
         lastSuccessfulSyncEpochSeconds = settings.getLong(KEY_LAST_SUCCESSFUL_EXPORT, 0L),
         pendingHeartRateRecords = pendingHeartRateRecords,
+        pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
         failedHeartRateRecords = settings.getInt(KEY_FAILED_HEART_RATE_RECORDS, 0),
         lastError = settings.getStringOrNull(KEY_LAST_ERROR),
     )

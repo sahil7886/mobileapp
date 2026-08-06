@@ -25,6 +25,7 @@ import io.rebble.libpebblecommon.database.dao.ChannelAndCount
 import io.rebble.libpebblecommon.database.dao.ContactWithCount
 import io.rebble.libpebblecommon.database.dao.DailyMovementAggregate
 import io.rebble.libpebblecommon.database.dao.HealthAggregates
+import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.dao.TimelineNotificationRealDao
 import io.rebble.libpebblecommon.database.dao.VibePatternDao
 import io.rebble.libpebblecommon.database.dao.WatchPreference
@@ -150,6 +151,14 @@ interface HealthDataApi {
     suspend fun getLatestTimestamp(): Long?
     suspend fun getHealthDataAfter(afterTimestamp: Long): List<HealthDataEntity>
     suspend fun getOverlayEntriesAfter(afterTimestamp: Long, types: List<Int>): List<OverlayDataEntity>
+
+    /** High-resolution records written by the optional Health Capture worker and not yet exported. */
+    suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity>
+
+    /** Completes the durable per-record export checkpoint after Apple Health accepts the batch. */
+    suspend fun markGranularHeartRateExported(recordIds: List<String>): Int
+
+    suspend fun countPendingGranularHeartRate(): Int
 
     /** Returns minute-level health data for the given epoch-second range. */
     suspend fun getHealthDataForRange(start: Long, end: Long): List<HealthDataEntity>

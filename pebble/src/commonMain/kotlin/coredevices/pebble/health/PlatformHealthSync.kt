@@ -59,6 +59,10 @@ class PlatformHealthSync(
     }
 
     companion object {
+        /** Bound a background pass; remaining records stay durably pending for the next sync. */
+        private const val MAX_GRANULAR_BATCHES_PER_SYNC = 10
+        private const val MAX_GRANULAR_RECORDS_PER_BATCH = 100
+
         val RequestedReadTypes = emptyList<HealthDataType>()
         val RequestedWriteTypes = listOf(
             HealthDataType.Steps,
@@ -137,6 +141,7 @@ class PlatformHealthSync(
             }
             syncSteps()
             syncHeartRate()
+            syncGranularWorkoutHeartRate()
             syncOverlays()
             logger.d { "Health platform sync completed" }
         } catch (e: Exception) {
@@ -148,12 +153,14 @@ class PlatformHealthSync(
 
     /** Refreshes the persistent state rendered by the Apple Health export status screen. */
     suspend fun refreshExportStatus() {
-        val pending = healthDataApi.getHealthDataAfter(tracker.lastSyncedHeartRateTimestamp)
+        val pendingMinuteRecords = healthDataApi.getHealthDataAfter(tracker.lastSyncedHeartRateTimestamp)
             .count { it.heartRate in 1..300 }
+        val pendingGranularRecords = healthDataApi.countPendingGranularHeartRate()
         tracker.updateExportStatus(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
-            pendingHeartRateRecords = pending,
+            pendingHeartRateRecords = pendingMinuteRecords,
+            pendingGranularHeartRateRecords = pendingGranularRecords,
         )
     }
 
@@ -228,19 +235,7 @@ class PlatformHealthSync(
             return
         }
 
-        val result = if (nativeHeartRateExporter.isActive) {
-            nativeHeartRateExporter.write(samples)
-        } else {
-            healthManager.writeData(samples.map { sample ->
-                val time = Instant.fromEpochSeconds(sample.timestampSeconds)
-                HeartRateRecord(
-                    startTime = time,
-                    endTime = time,
-                    samples = listOf(HeartRateRecord.Sample(time, sample.beatsPerMinute)),
-                    metadata = createMetadata(sample.timestampSeconds, "hr"),
-                )
-            }).map { HeartRateExportWriteResult(samples.size) }
-        }
+        val result = writeHeartRateSamples(samples)
 
         result.onSuccess { written ->
             tracker.lastSyncedHeartRateTimestamp = records.last().timestamp
@@ -255,6 +250,64 @@ class PlatformHealthSync(
                 "HEALTH_EXPORT_HR failed=${samples.size} checkpoint=$checkpoint; checkpoint retained"
             }
         }
+    }
+
+    /**
+     * Writes worker-captured workout readings separately from the minute health history. Each
+     * worker row remains pending in Room until the destination accepts it, and each retry carries
+     * the same HealthKit sync identifier based on the watch workout and sequence IDs.
+     */
+    private suspend fun syncGranularWorkoutHeartRate() {
+        var batches = 0
+        while (batches < MAX_GRANULAR_BATCHES_PER_SYNC) {
+            val records = healthDataApi.getPendingGranularHeartRate(MAX_GRANULAR_RECORDS_PER_BATCH)
+            if (records.isEmpty()) {
+                tracker.updateExportStatus(pendingGranularHeartRateRecords = 0)
+                return
+            }
+
+            val samples = records.map { record ->
+                HeartRateExportSample(
+                    timestampSeconds = record.timestampEpochSeconds,
+                    beatsPerMinute = record.filteredBpm,
+                    sourceRecordId = record.recordId,
+                )
+            }
+            tracker.updateExportStatus(pendingGranularHeartRateRecords = records.size)
+
+            val written = writeHeartRateSamples(samples).getOrElse { error ->
+                tracker.recordHeartRateExportFailure(records.size, error)
+                logger.e(error) {
+                    "HEALTH_EXPORT_WORKOUT_HR failed=${records.size} " +
+                        "first=${records.first().recordId}; rows retained"
+                }
+                return
+            }
+            healthDataApi.markGranularHeartRateExported(records.map { it.recordId })
+            tracker.recordSuccessfulHeartRateExport(records.maxOf { it.timestampEpochSeconds })
+            logger.d {
+                "HEALTH_EXPORT_WORKOUT_HR synced=${written.writtenRecords} " +
+                    "first=${records.first().recordId} last=${records.last().recordId}"
+            }
+            batches++
+        }
+        refreshExportStatus()
+    }
+
+    private suspend fun writeHeartRateSamples(
+        samples: List<HeartRateExportSample>,
+    ): Result<HeartRateExportWriteResult> = if (nativeHeartRateExporter.isActive) {
+        nativeHeartRateExporter.write(samples)
+    } else {
+        healthManager.writeData(samples.map { sample ->
+            val time = Instant.fromEpochSeconds(sample.timestampSeconds)
+            HeartRateRecord(
+                startTime = time,
+                endTime = time,
+                samples = listOf(HeartRateRecord.Sample(time, sample.beatsPerMinute)),
+                metadata = createMetadata(sample.timestampSeconds, "hr-${sample.sourceRecordId}"),
+            )
+        }).map { HeartRateExportWriteResult(samples.size) }
     }
 
     private suspend fun syncOverlays() {

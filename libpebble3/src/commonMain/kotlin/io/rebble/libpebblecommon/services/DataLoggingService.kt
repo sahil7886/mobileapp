@@ -61,23 +61,35 @@ class DataLoggingService(
                     val session = sessions[id]
                     if (session == null) {
                         logger.e { "Session not found: $id" }
+                        // Do not let a race or reconnect discard an unacknowledged watch buffer.
+                        send(DataLoggingOutgoingPacket.NACK(id))
                         return@onEach
                     }
-                    sendAckNack(id)
                     val info = watchInfo
                     if (info == null) {
                         logger.e { "watch info is null" }
+                        send(DataLoggingOutgoingPacket.NACK(id))
                         return@onEach
                     }
-                    datalogging.logData(
-                        sessionId = id,
-                        uuid = session.uuid,
-                        tag = session.tag,
-                        data = it.payload.get().toByteArray(),
-                        watchInfo = info,
-                        itemSize = session.itemSize,
-                        itemsLeft = it.itemsLeftAfterThis.get(),
-                    )
+                    val acknowledged = runCatching {
+                        datalogging.logData(
+                            sessionId = id,
+                            uuid = session.uuid,
+                            tag = session.tag,
+                            data = it.payload.get().toByteArray(),
+                            watchInfo = info,
+                            itemSize = session.itemSize,
+                            itemsLeft = it.itemsLeftAfterThis.get(),
+                        )
+                    }.onFailure { error ->
+                        logger.e(error) { "Data logging persistence failed for session=$id; NACKing" }
+                    }.getOrDefault(false)
+                    if (acknowledged) {
+                        sendAckNack(id)
+                    } else {
+                        logger.w { "Data logging payload retained on watch for retry: session=$id" }
+                        send(DataLoggingOutgoingPacket.NACK(id))
+                    }
                 }
 
                 is DataLoggingIncomingPacket.CloseSession -> {
