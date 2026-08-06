@@ -74,6 +74,12 @@ fun HealthScreen(topBarParams: TopBarParams, nav: NavBarNav) {
             SleepCard(slp, vm.selectedTimeRange)
             if (hasHrmWatch) HeartRateCard(hr, vm.selectedTimeRange)
             TextButton(
+                onClick = { nav.navigateTo(PebbleNavBarRoutes.HealthExportStatusRoute) },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
+                Text("Apple Health export status")
+            }
+            TextButton(
                 onClick = {
                     nav.navigateTo(
                         PebbleNavBarRoutes.WatchSettingsCategoryRoute(

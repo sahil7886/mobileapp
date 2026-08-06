@@ -130,9 +130,9 @@
 		<true/>
 	</dict>
 	<key>NSHealthShareUsageDescription</key>
-	<string>$(PRODUCT_NAME) writes health data recorded by your Pebble watch, such as steps and sleep.</string>
+	<string>$(PRODUCT_NAME) requests access only when you choose to share Pebble watch health records, including heart rate, steps, sleep, and workouts.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>$(PRODUCT_NAME) writes health data recorded by your Pebble watch, such as steps and sleep.</string>
+	<string>$(PRODUCT_NAME) writes heart rate, steps, sleep, and workout data recorded by your Pebble watch to Apple Health.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>This app needs bluetooth access to connect to your Pebble Watch.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

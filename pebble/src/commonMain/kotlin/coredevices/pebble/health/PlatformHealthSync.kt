@@ -3,7 +3,6 @@ package coredevices.pebble.health
 import co.touchlab.kermit.Logger
 import com.viktormykhailiv.kmp.health.HealthDataType
 import com.viktormykhailiv.kmp.health.HealthManager
-import com.viktormykhailiv.kmp.health.HealthRecord
 import com.viktormykhailiv.kmp.health.records.ExerciseSessionRecord
 import com.viktormykhailiv.kmp.health.records.ExerciseType
 import com.viktormykhailiv.kmp.health.records.HeartRateRecord
@@ -39,6 +38,7 @@ class PlatformHealthSync(
     private val healthDataApi: HealthDataApi,
 ) {
     private val logger = Logger.withTag("PlatformHealthSync")
+    private val nativeHeartRateExporter = NativeHeartRateExporter()
 
     private val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing
@@ -69,12 +69,14 @@ class PlatformHealthSync(
 
     /** Check if the health platform is available on this device. */
     fun isAvailable(): Boolean {
-        return healthManager.isAvailable().getOrDefault(false)
+        val genericPlatformAvailable = healthManager.isAvailable().getOrDefault(false)
+        return genericPlatformAvailable &&
+            (!nativeHeartRateExporter.isActive || nativeHeartRateExporter.isAvailable())
     }
 
     /** Request write permissions. Returns true if granted. */
     suspend fun requestPermissions(): Boolean {
-        val result = try {
+        val genericResult = try {
             healthManager.requestAuthorization(
                 readTypes = RequestedReadTypes,
                 writeTypes = RequestedWriteTypes,
@@ -84,7 +86,16 @@ class PlatformHealthSync(
             tracker.setEnabled(false)
             return false
         }
-        val success = result.getOrDefault(false)
+        val nativeResult = if (nativeHeartRateExporter.isActive) {
+            nativeHeartRateExporter.requestAuthorization()
+        } else {
+            Result.success(true)
+        }
+        val success = genericResult.getOrDefault(false) && nativeResult.getOrDefault(false)
+        tracker.updateExportStatus(
+            healthPlatformAvailable = isAvailable(),
+            heartRateAuthorization = nativeHeartRateExporter.authorization(),
+        )
         logger.v { "requestPermissions success=$success" }
         tracker.setEnabled(success)
         GlobalScope.launch {
@@ -94,7 +105,7 @@ class PlatformHealthSync(
     }
 
     suspend fun hasPermission(): Boolean {
-        val result = try {
+        val genericResult = try {
             healthManager.isAuthorized(
                 readTypes = RequestedReadTypes,
                 writeTypes = RequestedWriteTypes,
@@ -103,8 +114,15 @@ class PlatformHealthSync(
             logger.w(e) { "Health platform doesn't support requested types" }
             return false
         }
-        logger.v { "hasPermission: result=$result" }
-        return result.getOrDefault(false)
+        val nativeAuthorized = !nativeHeartRateExporter.isActive ||
+            nativeHeartRateExporter.authorization() == HealthWriteAuthorization.Authorized
+        val authorized = genericResult.getOrDefault(false) && nativeAuthorized
+        tracker.updateExportStatus(
+            healthPlatformAvailable = isAvailable(),
+            heartRateAuthorization = nativeHeartRateExporter.authorization(),
+        )
+        logger.v { "hasPermission: generic=$genericResult native=$nativeAuthorized" }
+        return authorized
     }
 
     /** Run a sync: query new data from Room DB, map to HealthKMP records, write. */
@@ -117,7 +135,8 @@ class PlatformHealthSync(
                 tracker.setEnabled(false)
                 return
             }
-            syncStepsAndHeartRate()
+            syncSteps()
+            syncHeartRate()
             syncOverlays()
             logger.d { "Health platform sync completed" }
         } catch (e: Exception) {
@@ -127,7 +146,18 @@ class PlatformHealthSync(
         }
     }
 
-    private suspend fun syncStepsAndHeartRate() {
+    /** Refreshes the persistent state rendered by the Apple Health export status screen. */
+    suspend fun refreshExportStatus() {
+        val pending = healthDataApi.getHealthDataAfter(tracker.lastSyncedHeartRateTimestamp)
+            .count { it.heartRate in 1..300 }
+        tracker.updateExportStatus(
+            healthPlatformAvailable = isAvailable(),
+            heartRateAuthorization = nativeHeartRateExporter.authorization(),
+            pendingHeartRateRecords = pending,
+        )
+    }
+
+    private suspend fun syncSteps() {
         val lastTimestamp = tracker.lastSyncedStepsTimestamp
         val latestTimestamp = healthDataApi.getLatestTimestamp() ?: return
         if (latestTimestamp <= lastTimestamp) return
@@ -135,7 +165,7 @@ class PlatformHealthSync(
         val records = healthDataApi.getHealthDataAfter(lastTimestamp)
         if (records.isEmpty()) return
 
-        val healthRecords = mutableListOf<HealthRecord>()
+        val healthRecords = mutableListOf<StepsRecord>()
 
         for (entity in records) {
             val startTime = Instant.fromEpochSeconds(entity.timestamp)
@@ -150,33 +180,80 @@ class PlatformHealthSync(
                     metadata = createMetadata(entity.timestamp, "steps"),
                 )
             }
-
-            // Heart rate
-            if (entity.heartRate in 1..300) {
-                healthRecords += HeartRateRecord(
-                    startTime = startTime,
-                    endTime = endTime,
-                    samples = listOf(
-                        HeartRateRecord.Sample(
-                            time = startTime,
-                            beatsPerMinute = entity.heartRate,
-                        )
-                    ),
-                    metadata = createMetadata(entity.timestamp, "hr"),
-                )
-            }
         }
 
         if (healthRecords.isNotEmpty()) {
             val result = healthManager.writeData(healthRecords)
             if (result.isSuccess) {
                 tracker.lastSyncedStepsTimestamp = records.last().timestamp
-                logger.d { "Synced ${healthRecords.size} step/HR records" }
+                logger.d { "Synced ${healthRecords.size} step records" }
             } else {
-                logger.e { "Failed to write step/HR records: ${result.exceptionOrNull()}" }
+                logger.e { "Failed to write step records: ${result.exceptionOrNull()}" }
             }
         } else {
             tracker.lastSyncedStepsTimestamp = records.last().timestamp
+        }
+    }
+
+    /**
+     * Writes raw watch readings independently from step totals.  The checkpoint is deliberately
+     * advanced only after a complete destination write; the native iOS writer also gives every
+     * point a HealthKit sync identifier, so an interrupted retry cannot create duplicates.
+     */
+    private suspend fun syncHeartRate() {
+        val checkpoint = tracker.lastSyncedHeartRateTimestamp
+        val records = healthDataApi.getHealthDataAfter(checkpoint)
+        if (records.isEmpty()) {
+            tracker.updateExportStatus(
+                healthPlatformAvailable = isAvailable(),
+                heartRateAuthorization = nativeHeartRateExporter.authorization(),
+                pendingHeartRateRecords = 0,
+            )
+            return
+        }
+
+        val samples = records.mapNotNull { entity ->
+            entity.heartRate.takeIf { it in 1..300 }?.let {
+                HeartRateExportSample(entity.timestamp, it)
+            }
+        }
+        tracker.updateExportStatus(
+            healthPlatformAvailable = isAvailable(),
+            heartRateAuthorization = nativeHeartRateExporter.authorization(),
+            pendingHeartRateRecords = samples.size,
+        )
+
+        if (samples.isEmpty()) {
+            tracker.lastSyncedHeartRateTimestamp = records.last().timestamp
+            return
+        }
+
+        val result = if (nativeHeartRateExporter.isActive) {
+            nativeHeartRateExporter.write(samples)
+        } else {
+            healthManager.writeData(samples.map { sample ->
+                val time = Instant.fromEpochSeconds(sample.timestampSeconds)
+                HeartRateRecord(
+                    startTime = time,
+                    endTime = time,
+                    samples = listOf(HeartRateRecord.Sample(time, sample.beatsPerMinute)),
+                    metadata = createMetadata(sample.timestampSeconds, "hr"),
+                )
+            }).map { HeartRateExportWriteResult(samples.size) }
+        }
+
+        result.onSuccess { written ->
+            tracker.lastSyncedHeartRateTimestamp = records.last().timestamp
+            tracker.recordSuccessfulHeartRateExport(records.last().timestamp)
+            tracker.updateExportStatus(pendingHeartRateRecords = 0)
+            logger.d {
+                "HEALTH_EXPORT_HR synced=${written.writtenRecords} checkpoint=${records.last().timestamp}"
+            }
+        }.onFailure { error ->
+            tracker.recordHeartRateExportFailure(samples.size, error)
+            logger.e(error) {
+                "HEALTH_EXPORT_HR failed=${samples.size} checkpoint=$checkpoint; checkpoint retained"
+            }
         }
     }
 
