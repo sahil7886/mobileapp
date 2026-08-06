@@ -2,34 +2,14 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlinx.atomicfu)
 }
 
+
 kotlin {
-    android {
-        namespace = "coredevices.pebble"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-        }
-
-        androidResources {
-            enable = true
-        }
-
-        withHostTestBuilder {}
-
-        optimization {
-            consumerKeepRules.file("consumer-rules.pro")
-        }
-    }
-
 // Target declarations - add or remove as needed below. These define
 // which platforms this KMP module supports.
 // See: https://kotlinlang.org/docs/multiplatform-discover-project.html#targets
@@ -120,18 +100,6 @@ kotlin {
         commonTest {
             dependencies {
                 implementation(libs.kotlin.test)
-            }
-        }
-
-        androidMain {
-            dependencies {
-                // Add Android-specific dependencies here. Note that this source set depends on
-                // commonMain by default and will correctly pull the Android artifacts of any KMP
-                // dependencies declared in commonMain.
-                implementation(compose.uiTooling)
-                implementation(libs.androidx.activity.compose)
-                // gitlive's compile variant declares com.google.firebase:* without versions.
-                implementation(project.dependencies.platform(libs.firebase.bom))
             }
         }
 

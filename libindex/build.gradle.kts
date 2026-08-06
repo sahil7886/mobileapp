@@ -4,7 +4,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
@@ -29,18 +28,6 @@ kotlin {
 // Target declarations - add or remove as needed below. These define
 // which platforms this KMP module supports.
 // See: https://kotlinlang.org/docs/multiplatform-discover-project.html#targets
-    android {
-        namespace = "coredevices.libindex"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-        }
-
-        withHostTestBuilder {}
-    }
-
 // For iOS targets, this is also where you should
 // configure native binary output. For more information, see:
 // https://kotlinlang.org/docs/multiplatform-build-native-binaries.html#build-xcframeworks
@@ -112,12 +99,6 @@ kotlin {
             }
         }
 
-        androidMain {
-            dependencies {
-                implementation(libs.ktor.client.okhttp)
-            }
-        }
-
         iosMain {
             dependencies {
                 implementation(libs.ktor.client.darwin)
@@ -128,7 +109,6 @@ kotlin {
 }
 
 dependencies {
-    add("kspAndroid", libs.room.compiler)
     add("kspIosArm64", libs.room.compiler)
     add("kspIosSimulatorArm64", libs.room.compiler)
 }

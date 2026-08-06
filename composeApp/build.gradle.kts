@@ -2,7 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlin.serialization)
@@ -10,6 +9,7 @@ plugins {
     alias(libs.plugins.nativeCocoaPods)
     alias(libs.plugins.kotlinx.atomicfu)
 }
+
 
 kotlin {
     val xcodeExists = providers.exec {
@@ -33,22 +33,6 @@ kotlin {
             }
         }
     }
-    android {
-        namespace = "coredevices.coreapp.shared"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-        }
-
-        androidResources {
-            enable = true
-        }
-
-        withHostTestBuilder {}
-    }
-
     // Make xcode invoke gradle from the right place
     tasks.register("fixXcodeProject") {
         val xcodeProjectFile = project.file("../iosApp/Pods/Pods.xcodeproj/project.pbxproj")
@@ -165,26 +149,6 @@ kotlin {
                 optIn("kotlinx.cinterop.BetaInteropApi")
                 optIn("kotlin.time.ExperimentalTime")
             }
-        }
-        androidMain.dependencies {
-            implementation(project.dependencies.platform(libs.firebase.bom))
-            implementation(libs.firebase.crashlytics.ndk)
-            implementation(compose.preview)
-            implementation(compose.uiTooling)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.androidx.credentials)
-            implementation(libs.gms.auth)
-            implementation(libs.identity.google)
-            implementation(libs.ktor.client.okhttp)
-            implementation(libs.coroutines.android)
-            implementation(libs.androidx.work)
-            implementation(libs.play.update)
-            implementation(libs.play.update.ktx)
-            implementation(libs.coil.gif)
-            implementation(libs.coredevices.haversine)
-        }
-        getByName("androidHostTest").dependencies {
-            implementation(libs.ktor.client.okhttp)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)

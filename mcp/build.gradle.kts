@@ -2,9 +2,9 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.kotlin.serialization)
 }
+
 
 kotlin {
     targets.configureEach {
@@ -14,19 +14,6 @@ kotlin {
                     freeCompilerArgs.add("-Xexpect-actual-classes")
                 }
             }
-        }
-    }
-    android {
-        namespace = "coredevices.mcp"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-        }
-
-        optimization {
-            consumerKeepRules.file("proguard-rules.pro")
         }
     }
 
@@ -58,9 +45,6 @@ kotlin {
             implementation(libs.ktor.client.contentNegotiation)
             implementation(libs.ktor.client.serialization.json)
             implementation(libs.ktor.client.logging)
-        }
-        androidMain.dependencies {
-            implementation(libs.ktor.client.okhttp)
         }
         jvmTest.dependencies {
             implementation(libs.kotlin.test.junit)

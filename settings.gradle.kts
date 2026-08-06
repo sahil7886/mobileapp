@@ -24,18 +24,19 @@ dependencyResolutionManagement {
 
 rootProject.name = "libpebbleroot"
 
+// This fork is an iPhone-only distribution. Android sources remain in the repository for
+// reference, but Android projects are deliberately outside the product graph.
+
 include(":libpebble3")
 include(":blobdbgen")
 include(":blobannotations")
 include(":composeApp")
-include(":androidApp")
 include(":pebble")
 include(":util")
 include(":mcp")
 include(":index-ai")
 include(":resampler")
 include(":cactus")
-include(":cactus-native")
 include(":libindex")
 include(":experimental")
 include(":krisp-stubs")

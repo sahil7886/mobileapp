@@ -1,31 +1,15 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.androidKotlinMultiplatformLibrary)
-    alias(libs.plugins.androidLint)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
 }
+
 
 kotlin {
 
     // Target declarations - add or remove as needed below. These define
     // which platforms this KMP module supports.
     // See: https://kotlinlang.org/docs/multiplatform-discover-project.html#targets
-    android {
-        namespace = "coredevices.indexai"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-
-        withHostTestBuilder {
-        }
-
-        withDeviceTestBuilder {
-            sourceSetTreeName = "test"
-        }.configure {
-            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        }
-    }
-
     jvm()
 
     // For iOS targets, this is also where you should
@@ -84,28 +68,6 @@ kotlin {
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.coroutines.test)
-            }
-        }
-
-        androidMain {
-            dependencies {
-                // The Firebase BOM resolves the native Android Firebase
-                // SDK versions that gitlive's `firebase-firestore-android`
-                // pulls in transitively. Without it, gradle can't pick a
-                // version for `com.google.firebase:firebase-firestore`
-                // and the Android compile fails. composeApp configures
-                // the BOM for app-level deps but Gradle doesn't propagate
-                // it back up to library modules that consume gitlive
-                // directly, so we re-declare it here.
-                implementation(project.dependencies.platform(libs.firebase.bom))
-            }
-        }
-
-        getByName("androidDeviceTest") {
-            dependencies {
-                implementation(libs.androidx.test.runner)
-                implementation(libs.androidx.core)
-                implementation(libs.androidx.junit)
             }
         }
 

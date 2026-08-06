@@ -6,7 +6,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlin.serialization)
@@ -36,26 +35,6 @@ kotlin {
     } else {
         ""
     }
-    android {
-        namespace = "coredevices.ring"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-        }
-
-        androidResources {
-            enable = true
-        }
-
-        withHostTestBuilder {}
-
-        withDeviceTestBuilder {}.configure {
-            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        }
-    }
-
 // Target declarations - add or remove as needed below. These define
 // which platforms this KMP module supports.
 // See: https://kotlinlang.org/docs/multiplatform-discover-project.html#targets
@@ -228,28 +207,6 @@ kotlin {
             }
         }
 
-        androidMain {
-            dependencies {
-                // gitlive's compile variant declares com.google.firebase:* without versions.
-                implementation(project.dependencies.platform(libs.firebase.bom))
-                implementation(libs.androidx.glance)
-                implementation(libs.androidx.glance.material3)
-                implementation(compose.uiTooling)
-                implementation(libs.identity.google)
-                implementation(libs.ktor.client.okhttp)
-                implementation(libs.androidx.credentials)
-                implementation(libs.zxing.core)
-                implementation(libs.androidx.documentfile)
-            }
-        }
-
-        getByName("androidDeviceTest") {
-            dependencies {
-                implementation(libs.androidx.test.runner)
-                implementation(libs.kotlin.test)
-            }
-        }
-
         iosMain {
             dependencies {
                 implementation(libs.okio)
@@ -282,7 +239,6 @@ buildkonfig {
 
 dependencies {
     add("kspCommonMainMetadata", libs.room.compiler)
-    add("kspAndroid", libs.room.compiler)
     add("kspIosArm64", libs.room.compiler)
     if (!ideSync) {
         //add("kspIosX64", libs.room.compiler)

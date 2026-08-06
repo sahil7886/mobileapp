@@ -5,7 +5,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     `maven-publish`
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
     alias(libs.plugins.kotlinx.atomicfu)
@@ -41,32 +40,6 @@ kotlin {
                     freeCompilerArgs.add("-Xexpect-actual-classes")
                 }
             }
-        }
-    }
-
-    android {
-        namespace = "io.rebble.libpebblecommon"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-
-        compilerOptions {
-            jvmTarget.set(JvmTarget.valueOf("JVM_${libs.versions.jvm.toolchain.get()}"))
-        }
-
-        androidResources {
-            enable = true
-        }
-
-        withHostTestBuilder {}
-
-        withDeviceTestBuilder {
-            sourceSetTreeName = "test"
-        }.configure {
-            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        }
-
-        optimization {
-            consumerKeepRules.file("consumer-rules.pro")
         }
     }
 
@@ -133,11 +106,6 @@ kotlin {
             implementation(libs.coroutines.test)
         }
 
-        androidMain.dependencies {
-            implementation(libs.androidx.core.ktx)
-            implementation(libs.pebblekit)
-        }
-
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.ktor.websockets)
@@ -154,17 +122,6 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
         }
 
-        getByName("androidDeviceTest").dependencies {
-            implementation(libs.androidx.test.runner)
-            implementation(libs.androidx.test.rules)
-            implementation(libs.androidx.monitor)
-        }
-
-        getByName("androidHostTest").dependencies {
-            implementation(libs.kotlin.test)
-            implementation(libs.kotlin.test.junit)
-            implementation(libs.coroutines.test)
-        }
     }
 }
 
@@ -177,10 +134,6 @@ tasks.withType<KotlinCompilationTask<*>>().all {
 }
 
 afterEvaluate {
-    tasks.named("kspAndroidMain") {
-        dependsOn("kspCommonMainKotlinMetadata")
-    }
-
     if (enableIosTarget) {
         tasks.named("kspKotlinIosArm64") {
             dependsOn("kspCommonMainKotlinMetadata")
@@ -195,8 +148,6 @@ dependencies {
 //    add("kspCommonMainMetadata", libs.room.compiler)
 //    add("kspJvm", libs.room.compiler)
     add("kspCommonMainMetadata", project(":blobdbgen"))
-    add("kspAndroid", libs.room.compiler)
-
     if (enableIosTarget) {
         add("kspIosArm64", libs.room.compiler)
         add("kspIosSimulatorArm64", libs.room.compiler)
