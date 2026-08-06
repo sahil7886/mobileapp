@@ -14,7 +14,6 @@ import coredevices.database.HEARTED_COLLECTION_SLUG
 import coredevices.database.HeartEntity
 import coredevices.database.HeartsDao
 import coredevices.pebble.Platform
-import coredevices.pebble.account.FirestoreLockerEntry
 import coredevices.pebble.services.AppstoreService.BulkFetchParams.Companion.encodeToJson
 import coredevices.pebble.services.PebbleHttpClient.Companion.delete
 import coredevices.pebble.services.PebbleHttpClient.Companion.post
@@ -38,12 +37,10 @@ import io.ktor.http.isSuccess
 import io.ktor.http.parseUrl
 import io.rebble.libpebblecommon.locker.AppType
 import io.rebble.libpebblecommon.metadata.WatchType
-import io.rebble.libpebblecommon.web.LockerEntry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.delay
 import kotlinx.io.IOException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -102,55 +99,12 @@ class AppstoreService(
         const val HEARTED_HOME_PREVIEW_LIMIT = 20
     }
 
-    /**
-     * Fetch apps for the given locker entries from this appstore source.
-     * Returns null if the fetch failed entirely (as opposed to an empty list meaning no apps found).
-     */
-    suspend fun fetchAppStoreApps(
-        entries: List<FirestoreLockerEntry>,
-        useCache: Boolean = true,
-    ): List<LockerEntry>? {
-        return if (pebbleAccountProvider.isLoggedIn() && source.isRebbleFeed()) {
-            fetchAppStoreAppsFromPwsLocker()
-        } else if (!supportsBulkFetch()) {
-            fetchAppStoreAppsOneByOne(entries, useCache)
-        } else {
-            fetchAppStoreAppsInBulk(entries, useCache)
-        }
-    }
-
-    private suspend fun fetchAppStoreAppsFromPwsLocker(): List<LockerEntry>? {
-        val locker = pebbleWebServices.fetchPebbleLocker()
-        if (locker == null) {
-            logger.w { "Failed to fetch Pebble locker" }
-            return null
-        } else {
-            return locker.applications
-        }
-    }
-
     @Serializable
     data class BulkFetchParams(
         val ids: List<String>,
-//        val hardware: String? = null,
     ) {
         companion object {
             fun BulkFetchParams.encodeToJson(): String = Json.encodeToString(this)
-        }
-    }
-
-    private suspend fun fetchAppStoreAppsInBulk(
-        entries: List<FirestoreLockerEntry>,
-        useCache: Boolean,
-    ): List<LockerEntry>? {
-        val entriesByAppstoreId = entries.associateBy { it.appstoreId }
-        val apps = bulkFetchByIds(entries.map { it.appstoreId }, useCache) ?: return null
-        return apps.mapNotNull { app ->
-            val matchingEntry = entriesByAppstoreId[app.id]
-            app.toLockerEntry(
-                sourceUrl = matchingEntry?.appstoreSource ?: source.url,
-                timelineToken = matchingEntry?.timelineToken,
-            )
         }
     }
 
@@ -230,32 +184,6 @@ class AppstoreService(
             }
         }
         return ids.mapNotNull { resolved[it] }
-    }
-
-    private suspend fun fetchAppStoreAppsOneByOne(
-        entries: List<FirestoreLockerEntry>,
-        useCache: Boolean = true,
-    ): List<LockerEntry> {
-        return entries.chunked(10).also {
-           logger.d { "Fetching locker entries in ${it.size} chunks" }
-        }.flatMap { lockerEntries ->
-            val result = lockerEntries.map { lockerEntry ->
-                scope.async {
-                    fetchAppStoreApp(
-                        lockerEntry.appstoreId,
-                        hardwarePlatform = null,
-                        useCache = useCache
-                    )?.data?.firstOrNull()?.toLockerEntry(
-                        sourceUrl = lockerEntry.appstoreSource,
-                        timelineToken = lockerEntry.timelineToken,
-                    )
-                }
-            }.awaitAll()
-            if (entries.size > 20) {
-                delay(50)
-            }
-            result
-        }.filterNotNull()
     }
 
     suspend fun addHeart(url: String, appId: String): Boolean {

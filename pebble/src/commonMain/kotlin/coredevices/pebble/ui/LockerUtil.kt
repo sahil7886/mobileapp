@@ -53,8 +53,6 @@ import coredevices.database.AppstoreSource
 import coredevices.database.AppstoreSourceDao
 import coredevices.database.HeartsDao
 import coredevices.pebble.Platform
-import coredevices.pebble.account.FirestoreLocker
-import coredevices.pebble.account.FirestoreLockerEntry
 import coredevices.pebble.rememberLibPebble
 import coredevices.pebble.services.AppstoreCache
 import coredevices.pebble.services.PebbleAccountProvider
@@ -84,7 +82,6 @@ import io.rebble.libpebblecommon.metadata.WatchType
 import io.rebble.libpebblecommon.web.LockerEntryCompanionApp
 import io.rebble.libpebblecommon.web.LockerEntryCompatibility
 import io.rebble.libpebblecommon.web.LockerEntryCompatibilityWatchPlatformDetails
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.firstOrNull
@@ -99,13 +96,6 @@ import kotlin.uuid.Uuid
 private val logger = Logger.withTag("LockerUtil")
 
 @Composable
-private fun firestoreLockerContents(): List<FirestoreLockerEntry>? {
-    val firestoreLocker: FirestoreLocker = koinInject()
-    val firestoreLockerContents by firestoreLocker.locker.collectAsState()
-    return firestoreLockerContents
-}
-
-@Composable
 private fun appstoreSources(): List<AppstoreSource>? {
     val appstoreSourceDao: AppstoreSourceDao = koinInject()
     val appstoreSources by appstoreSourceDao.getAllSources().collectAsState(null)
@@ -113,14 +103,15 @@ private fun appstoreSources(): List<AppstoreSource>? {
 }
 
 private fun LockerWrapper.findStoreSource(
-    firestoreLockerContents: List<FirestoreLockerEntry>?,
     appstoreSources: List<AppstoreSource>?,
 ): AppstoreSource? {
-    val firestoreEntry = firestoreLockerContents?.find { entry ->
-        entry.uuid == properties.id
-    } ?: return null
+    // libpebble3 persists the app-store source with every Locker row in its local
+    // SQLite database.  Do not consult an account-backed locker here: the local
+    // Locker is the source of truth for this iPhone and is what is synced to the
+    // watch.
+    val sourceLink = properties.sourceLink ?: return null
     return appstoreSources?.find { source ->
-        source.url == firestoreEntry.appstoreSource
+        source.url == sourceLink
     }
 }
 
@@ -179,7 +170,6 @@ fun loadLockerEntries(
     }
     val entries by lockerQuery.collectAsState(null)
     val appstoreSources = appstoreSources()
-    val firestoreLockerContents = firestoreLockerContents()
     val categories = appstoreCategories(type, appstoreSources)
     if (entries == null || appstoreSources == null || categories == null) {
         return null
@@ -188,12 +178,11 @@ fun loadLockerEntries(
         entries,
         watchType,
         appstoreSources,
-        firestoreLockerContents,
         showIncompatible,
         showScaled,
     ) {
         entries?.mapNotNull {
-            val appstoreSource = it.findStoreSource(firestoreLockerContents, appstoreSources)
+            val appstoreSource = it.findStoreSource(appstoreSources)
             val app = it.asCommonApp(watchType, appstoreSource, categories[appstoreSource])
             if (!showIncompatible && !app.isCompatible) {
                 return@mapNotNull null
@@ -259,13 +248,12 @@ fun CommonApp.inMyCollection(): Boolean {
 @Composable
 private fun LockerWrapper.load(watchType: WatchType): CommonApp? {
     val appstoreSources = appstoreSources()
-    val firestoreLockerContents = firestoreLockerContents()
     val categories = appstoreCategories(properties.type, appstoreSources)
     if (appstoreSources == null || categories == null) {
         return null
     }
-    return remember(this, watchType, appstoreSources, firestoreLockerContents) {
-        val appstoreSource = findStoreSource(firestoreLockerContents, appstoreSources)
+    return remember(this, watchType, appstoreSources) {
+        val appstoreSource = findStoreSource(appstoreSources)
         logger.v { "appstoreSource = $appstoreSource" }
         asCommonApp(watchType, appstoreSource, categories[appstoreSource])
     }
@@ -677,13 +665,9 @@ class NativeLockerAddUtil(
             return false
         }
         libPebble.addAppToLocker(lockerEntry)
-        // Don't delay return for this
-        GlobalScope.launch {
-            webServices.addToLocker(
-                app,
-                timelineToken = lockerEntry.userToken,
-            )
-        }
+        // The Locker row has already been committed by libpebble3 to the local
+        // SQLite database. Its normal sync manager will transfer it to the watch
+        // when connected; no account-backed mirror is required.
         return true
     }
 

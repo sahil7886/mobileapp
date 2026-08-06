@@ -8,7 +8,6 @@ import coredevices.database.HeartsDao
 import coredevices.pebble.Platform
 import coredevices.pebble.account.BootConfig
 import coredevices.pebble.account.BootConfigProvider
-import coredevices.pebble.account.FirestoreLocker
 import coredevices.pebble.account.PebbleAccount
 import coredevices.pebble.account.UsersMeResponse
 import coredevices.pebble.account.compareVersionStrings
@@ -273,7 +272,6 @@ class RealPebbleWebServices(
     private val memfaultChunkQueue: MemfaultChunkQueue,
     private val analyticsHeartbeatQueue: AnalyticsHeartbeatQueue,
     private val appstoreSourceDao: AppstoreSourceDao,
-    private val firestoreLocker: FirestoreLocker,
     private val heartsDao: HeartsDao,
 ) : WebServices, PebbleWebServices, KoinComponent {
     private val scope = CoroutineScope(Dispatchers.Default)
@@ -340,7 +338,11 @@ class RealPebbleWebServices(
 
     override suspend fun fetchLocker(): LockerModelWrapper? {
         fetchUserHearts()
-        return firestoreLocker.fetchLocker(forceRefresh = true)
+        // The local libpebble3 SQLite Locker is authoritative in the iPhone-only
+        // build. Returning null deliberately leaves it untouched: an unavailable
+        // cloud account must never turn a refresh into a mass removal of apps from
+        // the watch.
+        return null
     }
 
     override suspend fun fetchUserHearts() {
@@ -356,7 +358,7 @@ class RealPebbleWebServices(
     }
 
     override suspend fun removeFromLocker(id: Uuid): Boolean {
-        firestoreLocker.removeApp(id)
+        // The caller has already removed the item from libpebble3's local Locker.
         return true
     }
 
@@ -386,7 +388,10 @@ class RealPebbleWebServices(
         return put({ locker.addEndpoint.replace("\$\$app_uuid\$\$", uuid) }, auth = HttpClientAuthType.Pebble)?.body()
     }
 
-    override suspend fun addToLocker(entry: CommonAppType.Store, timelineToken: String?): Boolean = firestoreLocker.addApp(entry, timelineToken)
+    // NativeLockerAddUtil writes directly to libpebble3's local SQLite Locker.
+    // Retain this API as a no-op compatibility seam while the cloud Locker is not
+    // part of the iPhone-only product.
+    override suspend fun addToLocker(entry: CommonAppType.Store, timelineToken: String?): Boolean = true
 
     override suspend fun fetchUsersMePebble(): UsersMeResponse? = get({ links.usersMe }, auth = HttpClientAuthType.Pebble)
 
@@ -1015,6 +1020,9 @@ fun StoreApplication.toLockerEntry(sourceUrl: String, timelineToken: String?): L
                 app.asLockerEntryPlatform("gabbro", fallbackFlagsFinal)?.let { add(it) }
             }
         },
-        source = app.source,
+        // Persist the feed used to fetch the app, rather than trusting optional
+        // per-app metadata. The local Locker uses this URL to resolve the app's
+        // store source after an app restart.
+        source = sourceUrl,
     )
 }

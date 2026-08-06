@@ -32,8 +32,6 @@ import coredevices.pebble.Platform
 import coredevices.pebble.RealPebbleDeepLinkHandler
 import coredevices.pebble.account.BootConfig
 import coredevices.pebble.account.BootConfigProvider
-import coredevices.pebble.account.FirestoreLocker
-import coredevices.pebble.account.FirestoreLockerEntry
 import coredevices.pebble.account.PebbleAccount
 import coredevices.pebble.account.UsersMeResponse
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
@@ -67,7 +65,6 @@ import io.rebble.libpebblecommon.locker.AppType
 import io.rebble.libpebblecommon.metadata.WatchType
 import io.rebble.libpebblecommon.web.LockerAddResponse
 import io.rebble.libpebblecommon.web.LockerModel
-import io.rebble.libpebblecommon.web.LockerModelWrapper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -315,14 +312,6 @@ private fun fakePebbleModule(appContext: AppContext) = module {
     }
     single { appstoreCache } bind AppstoreCache::class
     single { NextBugReportContext() }
-    val firestoreLocker = object : FirestoreLocker {
-        override val locker: StateFlow<List<FirestoreLockerEntry>?> = MutableStateFlow(null)
-        override suspend fun fetchLocker(forceRefresh: Boolean): LockerModelWrapper? = null
-        override suspend fun addApp(entry: CommonAppType.Store, timelineToken: String?): Boolean = true
-        override suspend fun removeApp(uuid: Uuid): Boolean = true
-        override fun init() {}
-    }
-    single { firestoreLocker } bind FirestoreLocker::class
     val coreConfig = CoreConfig()
     single { CoreConfigFlow(MutableStateFlow(coreConfig)) }
     val requiredPermissions = RequiredPermissions(

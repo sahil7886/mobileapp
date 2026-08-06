@@ -14,8 +14,6 @@ import coredevices.coreapp.ui.screens.SHOWN_ONBOARDING
 import coredevices.coreapp.util.AppUpdate
 import coredevices.firestore.UsersDao
 import coredevices.pebble.PebbleAppDelegate
-import coredevices.pebble.account.FirestoreKnownWatchesSync
-import coredevices.pebble.account.FirestoreLocker
 import coredevices.pebble.health.PlatformHealthSync
 import coredevices.pebble.services.PebbleAccountProvider
 import coredevices.pebble.weather.WeatherFetcher
@@ -60,8 +58,6 @@ class CommonAppDelegate(
     private val appContext: AppContext,
     private val usersDao: UsersDao,
     private val pebbleAccountProvider: PebbleAccountProvider,
-    private val firestoreLocker: FirestoreLocker,
-    private val firestoreKnownWatchesSync: FirestoreKnownWatchesSync,
     private val libPebble: LibPebble,
     private val platformHealthSync: PlatformHealthSync,
 ) : CoreBackgroundSync {
@@ -167,8 +163,6 @@ class CommonAppDelegate(
                 experimentalDevices.init()
             }
         }
-        firestoreLocker.init()
-        firestoreKnownWatchesSync.init()
         oneTimeSetLockerOrderMode()
         platformHealthSync.startAutoSync(GlobalScope)
         if (settings.getBoolean(SHOWN_ONBOARDING, false)) {
