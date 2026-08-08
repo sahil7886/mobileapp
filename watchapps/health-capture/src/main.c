@@ -142,7 +142,7 @@ static void prv_click_config_provider(void *context) {
 }
 
 static void prv_window_load(Window *window) {
-  const Layer *root = window_get_root_layer(window);
+  Layer *root = window_get_root_layer(window);
   const GRect bounds = layer_get_bounds(root);
   s_text = text_layer_create(bounds);
   text_layer_set_text_alignment(s_text, GTextAlignmentCenter);

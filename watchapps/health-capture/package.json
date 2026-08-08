@@ -8,7 +8,7 @@
   "pebble": {
     "displayName": "Health Capture",
     "uuid": "4bb21e88-26a9-4039-9d04-082bff71073e",
-    "sdkVersion": "4",
+    "sdkVersion": "3",
     "enableMultiJS": false,
     "targetPlatforms": ["emery"],
     "capabilities": ["health"],
