@@ -3,6 +3,7 @@ package coredevices.pebble.health
 import co.touchlab.kermit.Logger
 import com.viktormykhailiv.kmp.health.HealthDataType
 import com.viktormykhailiv.kmp.health.HealthManager
+import com.viktormykhailiv.kmp.health.HealthRecord
 import com.viktormykhailiv.kmp.health.records.ExerciseSessionRecord
 import com.viktormykhailiv.kmp.health.records.ExerciseType
 import com.viktormykhailiv.kmp.health.records.HeartRateRecord

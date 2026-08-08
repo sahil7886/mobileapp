@@ -137,7 +137,6 @@ kotlin {
             implementation(libs.coroutines)
             implementation(project(":pebble"))
             implementation(project(":util"))
-            implementation(libs.kmpnotifier)
             implementation(libs.kmpio)
             implementation(project(":libpebble3"))
             implementation(project(":libindex"))

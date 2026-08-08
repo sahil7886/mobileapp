@@ -8,9 +8,6 @@ import coil3.memory.MemoryCache
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
 import com.eygraber.uri.toUri
-import com.mmk.kmpnotifier.extensions.onApplicationDidReceiveRemoteNotification
-import com.mmk.kmpnotifier.notification.NotifierManager
-import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
 import coredevices.analytics.AnalyticsBackend
 import coredevices.coreapp.di.apiModule
 import coredevices.coreapp.di.iosDefaultModule
@@ -18,6 +15,7 @@ import coredevices.coreapp.di.utilModule
 import coredevices.coreapp.ui.navigation.CoreDeepLinkHandler
 import coredevices.coreapp.util.FileLogWriter
 import coredevices.coreapp.util.initLogging
+import coredevices.coreapp.push.PlatformPushNotifications
 import coredevices.pebble.PebbleAppDelegate
 import coredevices.pebble.PebbleDeepLinkHandler
 import coredevices.pebble.watchModule
@@ -198,12 +196,7 @@ object IOSDelegate : KoinComponent {
         reportPreviousRunOutcome()
         // Can only use Koin after this point
 
-        // Initialize NotifierManager early to prevent crashes when PushMessaging tries to use it
-        NotifierManager.initialize(
-            configuration = NotificationPlatformConfiguration.Ios(
-                showPushNotification = false
-            )
-        )
+        PlatformPushNotifications.initialize()
         initPebble()
         GlobalScope.launch(Dispatchers.Main) {
             // Don't do this before we request permissions (it requests permissions - we want to
@@ -317,7 +310,7 @@ object IOSDelegate : KoinComponent {
     }
 
     fun applicationDidReceiveRemoteNotification(userInfo: Map<Any?, *>, fetchCompletionHandler: (ULong) -> Unit) {
-        NotifierManager.onApplicationDidReceiveRemoteNotification(userInfo)
+        PlatformPushNotifications.handleRemoteNotification(userInfo)
         fetchCompletionHandler(UIBackgroundFetchResult.UIBackgroundFetchResultNewData.value)
     }
 

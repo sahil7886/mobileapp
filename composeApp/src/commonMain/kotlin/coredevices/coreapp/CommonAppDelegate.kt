@@ -1,13 +1,13 @@
 package coredevices.coreapp
 
 import co.touchlab.kermit.Logger
-import com.mmk.kmpnotifier.notification.NotifierManager
 import com.russhwolf.settings.Settings
 import coredevices.CoreBackgroundSync
 import coredevices.analytics.AnalyticsBackend
 import coredevices.analytics.CoreAnalytics
 import coredevices.analytics.setUser
 import coredevices.coreapp.api.BugReports
+import coredevices.coreapp.push.PlatformPushNotifications
 import coredevices.coreapp.push.PushMessaging
 import coredevices.coreapp.ui.screens.SHOWN_ONBOARDING
 import coredevices.coreapp.util.AppUpdate
@@ -97,7 +97,7 @@ class CommonAppDelegate(
                 }
                 if (settings.getStringOrNull(STT_UPDATE_NOTIFIED_VERSION_KEY) != CommonBuildKonfig.CACTUS_WEIGHTS_VERSION) {
                     settings.putString(STT_UPDATE_NOTIFIED_VERSION_KEY, CommonBuildKonfig.CACTUS_WEIGHTS_VERSION)
-                    NotifierManager.getLocalNotifier().notify(
+                    PlatformPushNotifications.notifyLocal(
                         STT_UPDATE_NOTIFICATION_ID,
                         "Offline voice recognition",
                         "We've improved offline voice recognition. Open the app to update the model."

@@ -10,6 +10,7 @@ import platform.HealthKit.HKAuthorizationStatusNotDetermined
 import platform.HealthKit.HKAuthorizationStatusSharingAuthorized
 import platform.HealthKit.HKAuthorizationStatusSharingDenied
 import platform.HealthKit.HKHealthStore
+import platform.HealthKit.HKObjectType
 import platform.HealthKit.HKQuantity
 import platform.HealthKit.HKQuantitySample
 import platform.HealthKit.HKQuantityType
@@ -60,7 +61,7 @@ internal actual class NativeHeartRateExporter {
         suspendCancellableCoroutine { continuation ->
             healthStore.requestAuthorizationToShareTypes(
                 typesToShare = setOf(type),
-                readTypes = emptySet(),
+                readTypes = emptySet<HKObjectType>(),
             ) { _, error ->
                 if (continuation.isCancelled) return@requestAuthorizationToShareTypes
                 if (error != null) {

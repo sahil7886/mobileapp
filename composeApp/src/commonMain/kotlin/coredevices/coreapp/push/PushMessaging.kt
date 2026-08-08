@@ -3,8 +3,6 @@ package coredevices.coreapp.push
 import CoreAppVersion
 import PlatformContext
 import co.touchlab.kermit.Logger
-import com.mmk.kmpnotifier.notification.NotifierManager
-import com.mmk.kmpnotifier.notification.PayloadData
 import coredevices.coreapp.api.BugReports
 import kotlin.time.Instant
 
@@ -14,7 +12,7 @@ class PushMessaging(
     private val logger = Logger.withTag("PushMessaging")
 
     fun init() {
-        NotifierManager.addListener(object : NotifierManager.Listener {
+        PlatformPushNotifications.addListener(object : PushNotificationListener {
             override fun onNewToken(token: String) {
                 // The token remains on-device until a direct APNs provider is
                 // configured. Do not upload it from the app.
@@ -28,16 +26,15 @@ class PushMessaging(
             override fun onPushNotificationWithPayloadData(
                 title: String?,
                 body: String?,
-                data: PayloadData,
+                data: Map<Any?, *>,
             ) {
                 handleMessage(data)
             }
         })
-        NotifierManager.setLogger { message -> Logger.v(message) }
 
     }
 
-    private fun handleMessage(data: PayloadData) {
+    private fun handleMessage(data: Map<Any?, *>) {
         val type = data["type"]
         logger.d { "handleMessage: type=$type data=$data" }
         when (type) {
