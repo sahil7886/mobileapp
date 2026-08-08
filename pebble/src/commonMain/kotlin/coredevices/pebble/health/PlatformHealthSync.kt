@@ -107,6 +107,7 @@ class PlatformHealthSync(
         tracker.updateExportStatus(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
+            workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
         )
         logger.v { "requestPermissions success=$success" }
         tracker.setEnabled(success)
@@ -127,11 +128,15 @@ class PlatformHealthSync(
             return false
         }
         val nativeAuthorized = !nativeHeartRateExporter.isActive ||
-            nativeHeartRateExporter.authorization() == HealthWriteAuthorization.Authorized
+            (
+                nativeHeartRateExporter.authorization() == HealthWriteAuthorization.Authorized &&
+                    nativeHeartRateExporter.workoutAuthorization() == HealthWriteAuthorization.Authorized
+                )
         val authorized = genericResult.getOrDefault(false) && nativeAuthorized
         tracker.updateExportStatus(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
+            workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
         )
         logger.v { "hasPermission: generic=$genericResult native=$nativeAuthorized" }
         return authorized
@@ -167,6 +172,7 @@ class PlatformHealthSync(
         tracker.updateExportStatus(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
+            workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
             pendingHeartRateRecords = pendingMinuteRecords,
             pendingGranularHeartRateRecords = pendingGranularRecords,
         )
@@ -222,6 +228,7 @@ class PlatformHealthSync(
             tracker.updateExportStatus(
                 healthPlatformAvailable = isAvailable(),
                 heartRateAuthorization = nativeHeartRateExporter.authorization(),
+                workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
                 pendingHeartRateRecords = 0,
             )
             return
@@ -235,6 +242,7 @@ class PlatformHealthSync(
         tracker.updateExportStatus(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
+            workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
             pendingHeartRateRecords = samples.size,
         )
 
@@ -362,6 +370,27 @@ class PlatformHealthSync(
             }.toList()
         if (samples.isEmpty()) return false
 
+        // The original, summary-only exporter may already have committed this overlay when the
+        // detailed Datalogging session arrived late or could not be completed. Preserve that
+        // normal Pebble workout and export the retained HR points by themselves instead of
+        // creating a second HealthKit workout for the same activity.
+        if (overlay.startTime <= tracker.lastSyncedOverlayTimestamp) {
+            val written = writeHeartRateSamples(samples).getOrElse { error ->
+                tracker.recordHeartRateExportFailure(samples.size, error)
+                logger.e(error) {
+                    "HEALTH_EXPORT_BUILTIN_WORKOUT fallback HR failed workout=$workoutId; rows retained"
+                }
+                return false
+            }
+            healthDataApi.markGranularHeartRateExported(detail.map { it.recordId })
+            tracker.recordSuccessfulHeartRateExport(terminal.timestampEpochSeconds)
+            logger.w {
+                "HEALTH_EXPORT_BUILTIN_WORKOUT fallback standalone-HR saved=" +
+                    "${written.writtenRecords} workout=$workoutId"
+            }
+            return true
+        }
+
         if (!nativeHeartRateExporter.isActive) {
             val written = writeHeartRateSamples(samples).getOrElse { error ->
                 tracker.recordHeartRateExportFailure(samples.size, error)
@@ -458,7 +487,7 @@ class PlatformHealthSync(
                     it.workoutId == overlay.startTime &&
                         BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId)
                 }
-                detail.isNotEmpty()
+                detail.hasCompletedExportableBuiltinWorkout()
             }
         } else {
             emptyList()
@@ -550,6 +579,11 @@ class PlatformHealthSync(
             tracker.lastSyncedOverlayTimestamp = maxSyncedTimestamp
         }
     }
+
+    private fun List<io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity>
+        .hasCompletedExportableBuiltinWorkout(): Boolean =
+        any { it.filteredBpm in 1..300 } &&
+            any { it.flags and BuiltinWorkoutHeartRateProtocol.FLAG_WORKOUT_COMPLETE != 0 }
 
     private fun buildSleepSessions(overlays: List<OverlayDataEntity>): List<SleepSessionRecord> {
         if (overlays.isEmpty()) return emptyList()

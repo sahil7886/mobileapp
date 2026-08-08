@@ -2,6 +2,7 @@ package io.rebble.libpebblecommon.datalogging
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BuiltinWorkoutHeartRateProtocolTest {
@@ -28,5 +29,17 @@ class BuiltinWorkoutHeartRateProtocolTest {
         assertEquals(0, decodedTerminal.filteredBpm)
         assertEquals(1_700_000_002, decodedTerminal.timestampEpochSeconds)
         assertTrue(BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(decodedPoint.recordId))
+    }
+
+    @Test
+    fun rejectsACompletionRecordWithMeasurementData() {
+        val malformedTerminal = byteArrayOf(
+            0x00, 0xf1.toByte(), 0x53, 0x65,
+            0x2a, 0x00, 0x00, 0x00,
+            0x01, 0xf1.toByte(), 0x53, 0x65,
+            148.toByte(), 3, BuiltinWorkoutHeartRateProtocol.FLAG_WORKOUT_COMPLETE.toByte(), 1,
+        )
+
+        assertNull(BuiltinWorkoutHeartRateProtocol.decode(malformedTerminal, 1_700_000_100))
     }
 }

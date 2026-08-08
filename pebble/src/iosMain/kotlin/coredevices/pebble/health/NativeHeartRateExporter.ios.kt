@@ -53,13 +53,21 @@ internal actual class NativeHeartRateExporter {
     actual fun authorization(): HealthWriteAuthorization {
         val type = heartRateType ?: return HealthWriteAuthorization.Unavailable
         if (!HKHealthStore.isHealthDataAvailable()) return HealthWriteAuthorization.Unavailable
-        return when (healthStore.authorizationStatusForType(type)) {
+        return authorizationFor(type)
+    }
+
+    actual fun workoutAuthorization(): HealthWriteAuthorization {
+        if (!HKHealthStore.isHealthDataAvailable()) return HealthWriteAuthorization.Unavailable
+        return authorizationFor(workoutType)
+    }
+
+    private fun authorizationFor(type: HKObjectType): HealthWriteAuthorization =
+        when (healthStore.authorizationStatusForType(type)) {
             HKAuthorizationStatusSharingAuthorized -> HealthWriteAuthorization.Authorized
             HKAuthorizationStatusSharingDenied -> HealthWriteAuthorization.Denied
             HKAuthorizationStatusNotDetermined -> HealthWriteAuthorization.NotDetermined
             else -> HealthWriteAuthorization.NotDetermined
         }
-    }
 
     actual suspend fun requestAuthorization(): Result<Boolean> = runCatching {
         val type = heartRateType ?: error("Heart-rate HealthKit type is unavailable")
@@ -76,8 +84,7 @@ internal actual class NativeHeartRateExporter {
                 } else {
                     continuation.resume(
                         authorization() == HealthWriteAuthorization.Authorized &&
-                            healthStore.authorizationStatusForType(workoutType) ==
-                                HKAuthorizationStatusSharingAuthorized,
+                            workoutAuthorization() == HealthWriteAuthorization.Authorized,
                     )
                 }
             }
@@ -110,7 +117,7 @@ internal actual class NativeHeartRateExporter {
         require(authorization() == HealthWriteAuthorization.Authorized) {
             "Apple Health heart-rate sharing is not authorized"
         }
-        require(healthStore.authorizationStatusForType(workoutType) == HKAuthorizationStatusSharingAuthorized) {
+        require(workoutAuthorization() == HealthWriteAuthorization.Authorized) {
             "Apple Health workout sharing is not authorized"
         }
 

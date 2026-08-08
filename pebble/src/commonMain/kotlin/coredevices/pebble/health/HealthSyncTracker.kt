@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 data class HealthExportStatus(
     val healthPlatformAvailable: Boolean,
     val heartRateAuthorization: HealthWriteAuthorization,
+    val workoutAuthorization: HealthWriteAuthorization,
     val lastSuccessfulSyncEpochSeconds: Long,
     val pendingHeartRateRecords: Int,
     val pendingGranularHeartRateRecords: Int,
@@ -74,12 +75,14 @@ class HealthSyncTracker(private val settings: Settings) {
     fun updateExportStatus(
         healthPlatformAvailable: Boolean = _status.value.healthPlatformAvailable,
         heartRateAuthorization: HealthWriteAuthorization = _status.value.heartRateAuthorization,
+        workoutAuthorization: HealthWriteAuthorization = _status.value.workoutAuthorization,
         pendingHeartRateRecords: Int = _status.value.pendingHeartRateRecords,
         pendingGranularHeartRateRecords: Int = _status.value.pendingGranularHeartRateRecords,
     ) {
         _status.value = snapshot(
             healthPlatformAvailable = healthPlatformAvailable,
             heartRateAuthorization = heartRateAuthorization,
+            workoutAuthorization = workoutAuthorization,
             pendingHeartRateRecords = pendingHeartRateRecords,
             pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
         )
@@ -103,6 +106,7 @@ class HealthSyncTracker(private val settings: Settings) {
         _status.value = snapshot(
             healthPlatformAvailable = _status.value.healthPlatformAvailable,
             heartRateAuthorization = _status.value.heartRateAuthorization,
+            workoutAuthorization = _status.value.workoutAuthorization,
             pendingHeartRateRecords = _status.value.pendingHeartRateRecords,
             pendingGranularHeartRateRecords = _status.value.pendingGranularHeartRateRecords,
         )
@@ -111,11 +115,13 @@ class HealthSyncTracker(private val settings: Settings) {
     private fun snapshot(
         healthPlatformAvailable: Boolean = false,
         heartRateAuthorization: HealthWriteAuthorization = HealthWriteAuthorization.NotDetermined,
+        workoutAuthorization: HealthWriteAuthorization = HealthWriteAuthorization.NotDetermined,
         pendingHeartRateRecords: Int = 0,
         pendingGranularHeartRateRecords: Int = 0,
     ): HealthExportStatus = HealthExportStatus(
         healthPlatformAvailable = healthPlatformAvailable,
         heartRateAuthorization = heartRateAuthorization,
+        workoutAuthorization = workoutAuthorization,
         lastSuccessfulSyncEpochSeconds = settings.getLong(KEY_LAST_SUCCESSFUL_EXPORT, 0L),
         pendingHeartRateRecords = pendingHeartRateRecords,
         pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,

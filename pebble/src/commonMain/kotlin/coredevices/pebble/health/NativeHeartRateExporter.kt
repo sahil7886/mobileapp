@@ -84,6 +84,9 @@ internal expect class NativeHeartRateExporter() {
 
     fun authorization(): HealthWriteAuthorization
 
+    /** Apple Health sharing state for workouts that contain detailed heart-rate samples. */
+    fun workoutAuthorization(): HealthWriteAuthorization
+
     suspend fun requestAuthorization(): Result<Boolean>
 
     suspend fun write(samples: List<HeartRateExportSample>): Result<HeartRateExportWriteResult>

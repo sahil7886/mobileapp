@@ -49,7 +49,12 @@ object BuiltinWorkoutHeartRateProtocol {
         val quality = record[13].toInt()
         val flags = record[14].unsigned()
         val complete = flags and FLAG_WORKOUT_COMPLETE != 0
-        if (workoutId == 0L || timestamp == 0L || (!complete && bpm !in 1..300)) return null
+        if (
+            workoutId == 0L ||
+            timestamp == 0L ||
+            (complete && bpm != 0) ||
+            (!complete && bpm !in 1..300)
+        ) return null
 
         return GranularHeartRateEntity(
             recordId = "$RECORD_ID_PREFIX:$workoutId:$sequence",

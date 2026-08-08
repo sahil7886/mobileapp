@@ -88,6 +88,7 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
 private fun HealthExportStatusRows(status: HealthExportStatus) {
     StatusRow("Health platform", if (status.healthPlatformAvailable) "Available" else "Unavailable")
     StatusRow("Heart-rate permission", status.heartRateAuthorization.toDisplayName())
+    StatusRow("Workout permission", status.workoutAuthorization.toDisplayName())
     StatusRow("Last successful sync", status.lastSuccessfulSyncEpochSeconds.toDisplayTime())
     StatusRow("Pending heart-rate records", status.pendingHeartRateRecords.toString())
     StatusRow("Pending workout HR records", status.pendingGranularHeartRateRecords.toString())

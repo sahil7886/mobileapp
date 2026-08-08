@@ -8,6 +8,8 @@ internal actual class NativeHeartRateExporter {
 
     actual fun authorization(): HealthWriteAuthorization = HealthWriteAuthorization.NotApplicable
 
+    actual fun workoutAuthorization(): HealthWriteAuthorization = HealthWriteAuthorization.NotApplicable
+
     actual suspend fun requestAuthorization(): Result<Boolean> = Result.success(true)
 
     actual suspend fun write(samples: List<HeartRateExportSample>): Result<HeartRateExportWriteResult> =
