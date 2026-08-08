@@ -40,6 +40,38 @@ data class HeartRateExportWriteResult(
     val writtenRecords: Int,
 )
 
+enum class WorkoutHeartRateExportType {
+    Walking,
+    Running,
+    Other,
+}
+
+/** A completed Pebble Workout plus its one-second heart-rate samples. */
+data class WorkoutHeartRateExport(
+    /** Stable identity shared by the PebbleOS session, local database, and HealthKit metadata. */
+    val sourceRecordId: String,
+    val type: WorkoutHeartRateExportType,
+    val startEpochSeconds: Long,
+    val endEpochSeconds: Long,
+    val heartRateSamples: List<HeartRateExportSample>,
+) {
+    init {
+        require(sourceRecordId.isNotBlank())
+        require(startEpochSeconds > 0)
+        require(endEpochSeconds > startEpochSeconds)
+        require(heartRateSamples.all {
+            it.timestampSeconds in startEpochSeconds..endEpochSeconds
+        }) { "Workout heart-rate samples must be within the workout bounds" }
+    }
+
+    val syncIdentifier: String
+        get() = "coredevices.pebble.health.workout.v1.$sourceRecordId"
+}
+
+data class WorkoutHeartRateExportWriteResult(
+    val writtenHeartRateRecords: Int,
+)
+
 /**
  * Platform-native writer for the small set of records where the platform API has guarantees the
  * KMP abstraction cannot express.  On iOS this writes point samples with HealthKit's sync
@@ -55,4 +87,9 @@ internal expect class NativeHeartRateExporter() {
     suspend fun requestAuthorization(): Result<Boolean>
 
     suspend fun write(samples: List<HeartRateExportSample>): Result<HeartRateExportWriteResult>
+
+    /** Creates one native workout with its detailed samples attached where the platform supports it. */
+    suspend fun writeWorkout(
+        workout: WorkoutHeartRateExport,
+    ): Result<WorkoutHeartRateExportWriteResult>
 }

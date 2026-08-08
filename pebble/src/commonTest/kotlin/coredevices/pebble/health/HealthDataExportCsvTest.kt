@@ -2,6 +2,7 @@ package coredevices.pebble.health
 
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -33,6 +34,25 @@ class HealthDataExportCsvTest {
 
         assertContains(row, ",144,147,7,")
         assertContains(row, ",false,health-capture-v1:7:11")
+    }
+
+    @Test
+    fun builtInWorkoutRowsExposeTheRecordedSensorQuality() {
+        val row = HealthDataExportCsv.granularHeartRateRow(
+            GranularHeartRateEntity(
+                recordId = "builtin-workout-v1:1700000000:7",
+                workoutId = 1_700_000_000,
+                sequence = 7,
+                timestampEpochSeconds = 1_700_000_007,
+                filteredBpm = 132,
+                rawBpm = 132,
+                flags = BuiltinWorkoutHeartRateProtocol.FLAG_WORKOUT_ACTIVE or (3 shl 8),
+                receivedAtEpochSeconds = 1_700_000_100,
+            ),
+        )
+
+        assertContains(HealthDataExportCsv.GRANULAR_HEART_RATE_HEADER, "sensor_quality")
+        assertContains(row, ",132,132,1,3,")
     }
 
     @Test

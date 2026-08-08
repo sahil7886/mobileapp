@@ -32,6 +32,10 @@
   HR with UTC timestamps and persistent sequence IDs through local-first Datalogging.
 - [x] Persist worker records before DataLogging ACK, deduplicate them by workout + sequence ID, and
   export filtered points through replay-safe HealthKit sync identifiers.
+- [~] Extend PebbleOS's built-in Workout service with a buffered one-second heart-rate stream,
+  persistent sequence IDs, sensor-quality diagnostics, and an exact terminal timestamp. The phone
+  pairs it with the existing ActivitySession and creates one native Apple Health workout with its
+  BPM samples attached. Build/flash and physical iPhone validation remain outstanding.
 - [x] Add an on-device, shareable ZIP export for rolling 7-day, 30-day, and six-month windows.
   It contains separate CSVs for all locally persisted minute health, received workout HR (filtered
   and raw diagnostic BPM), and sleep/activity overlays, plus a manifest and field documentation.
@@ -39,13 +43,15 @@
 
 ## Partial / requires physical validation
 
-- [~] Heart rate during activities and time in zones: the worker records more granular filtered
-  readings during manually started workouts. Verify Time 2 event frequency, battery impact, sensor
-  quality, and Apple Health export; HR samples are not yet associated with `HKWorkout` records.
+- [~] Heart rate during activities and time in zones: the built-in Workout requests one-second
+  readings and already calculates zones on-watch; the new stream persists its API-visible BPM
+  points and the iOS exporter attaches them to the matching `HKWorkout`. Verify Time 2 event
+  frequency, battery impact, sensor quality, Apple Health association, and retry behavior.
 - [~] Sleep detection: existing sleep/deep-sleep overlays export through the cross-platform path;
   validate boundaries and quality before changing the algorithm.
-- [~] Workout detection: existing walk/run/open-workout overlays export as workouts. Detection
-  quality, HR associations, and duplicate workout handling still require device testing.
+- [~] Workout detection: existing walk/run/open-workout overlays export as workouts. Manual
+  built-in Workout HR association is implemented; automatic-detection quality and duplicate
+  handling still require device testing.
 - [~] Resting heart rate: the app calculates a sleep-based value locally, but does not yet export
   `HKQuantityTypeIdentifierRestingHeartRate`.
 - [~] Completeness: the first slice exports heart rate to Apple Health. Steps, sleep, and workouts

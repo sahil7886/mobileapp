@@ -17,6 +17,7 @@ import coredevices.util.AppResumed
 import io.rebble.libpebblecommon.connection.HealthDataApi
 import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import io.rebble.libpebblecommon.health.OverlayType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.GlobalScope
@@ -63,6 +64,12 @@ class PlatformHealthSync(
         /** Bound a background pass; remaining records stay durably pending for the next sync. */
         private const val MAX_GRANULAR_BATCHES_PER_SYNC = 10
         private const val MAX_GRANULAR_RECORDS_PER_BATCH = 100
+        private const val BUILTIN_WORKOUT_LOOKUP_WINDOW_SECONDS = 24 * 60 * 60L
+        private val BUILTIN_WORKOUT_OVERLAY_TYPES = setOf(
+            OverlayType.Walk.value,
+            OverlayType.Run.value,
+            OverlayType.OpenWorkout.value,
+        )
 
         val RequestedReadTypes = emptyList<HealthDataType>()
         val RequestedWriteTypes = listOf(
@@ -254,9 +261,9 @@ class PlatformHealthSync(
     }
 
     /**
-     * Writes worker-captured workout readings separately from the minute health history. Each
-     * worker row remains pending in Room until the destination accepts it, and each retry carries
-     * the same HealthKit sync identifier based on the watch workout and sequence IDs.
+     * Writes high-resolution workout readings. Health Capture records retain the historic
+     * standalone path; built-in Workout records wait for their matching normal ActivitySession
+     * and become one native workout with associated heart-rate samples on iOS.
      */
     private suspend fun syncGranularWorkoutHeartRate() {
         var batches = 0
@@ -267,32 +274,138 @@ class PlatformHealthSync(
                 return
             }
 
-            val samples = records.map { record ->
-                HeartRateExportSample(
-                    timestampSeconds = record.timestampEpochSeconds,
-                    beatsPerMinute = record.filteredBpm,
-                    sourceRecordId = record.recordId,
-                )
-            }
             tracker.updateExportStatus(pendingGranularHeartRateRecords = records.size)
+            var madeProgress = false
 
-            val written = writeHeartRateSamples(samples).getOrElse { error ->
-                tracker.recordHeartRateExportFailure(records.size, error)
-                logger.e(error) {
-                    "HEALTH_EXPORT_WORKOUT_HR failed=${records.size} " +
-                        "first=${records.first().recordId}; rows retained"
-                }
-                return
+            val standalone = records.filterNot {
+                BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId)
             }
-            healthDataApi.markGranularHeartRateExported(records.map { it.recordId })
-            tracker.recordSuccessfulHeartRateExport(records.maxOf { it.timestampEpochSeconds })
-            logger.d {
-                "HEALTH_EXPORT_WORKOUT_HR synced=${written.writtenRecords} " +
-                    "first=${records.first().recordId} last=${records.last().recordId}"
+            if (standalone.isNotEmpty()) {
+                val samples = standalone.map { record ->
+                    HeartRateExportSample(
+                        timestampSeconds = record.timestampEpochSeconds,
+                        beatsPerMinute = record.filteredBpm,
+                        sourceRecordId = record.recordId,
+                    )
+                }
+                val written = writeHeartRateSamples(samples).getOrElse { error ->
+                    tracker.recordHeartRateExportFailure(standalone.size, error)
+                    logger.e(error) {
+                        "HEALTH_EXPORT_WORKOUT_HR failed=${standalone.size} " +
+                            "first=${standalone.first().recordId}; rows retained"
+                    }
+                    return
+                }
+                healthDataApi.markGranularHeartRateExported(standalone.map { it.recordId })
+                tracker.recordSuccessfulHeartRateExport(standalone.maxOf { it.timestampEpochSeconds })
+                logger.d { "HEALTH_EXPORT_WORKOUT_HR synced=${written.writtenRecords}" }
+                madeProgress = true
+            }
+
+            val builtInWorkoutIds = records
+                .asSequence()
+                .filter { BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId) }
+                .map { it.workoutId }
+                .distinct()
+                .toList()
+            for (workoutId in builtInWorkoutIds) {
+                if (syncBuiltInWorkoutHeartRate(workoutId)) madeProgress = true
+            }
+
+            if (!madeProgress) {
+                logger.d { "HEALTH_EXPORT_BUILTIN_WORKOUT waiting for its session or completion record" }
+                refreshExportStatus()
+                return
             }
             batches++
         }
         refreshExportStatus()
+    }
+
+    /** Returns true only when this call durably exported a completed built-in workout. */
+    private suspend fun syncBuiltInWorkoutHeartRate(workoutId: Long): Boolean {
+        // A built-in Workout runs for at most an hour on the current firmware. The terminal
+        // record gives the exact stop timestamp; the wider query also tolerates a delayed DLS
+        // packet without trusting the minute-rounded ActivitySession duration as the end bound.
+        val detail = healthDataApi.getGranularHeartRateForRange(
+            workoutId,
+            workoutId + BUILTIN_WORKOUT_LOOKUP_WINDOW_SECONDS,
+        ).filter {
+            it.workoutId == workoutId &&
+                BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId)
+        }
+        val terminal = detail
+            .filter { it.flags and BuiltinWorkoutHeartRateProtocol.FLAG_WORKOUT_COMPLETE != 0 }
+            .maxByOrNull { it.timestampEpochSeconds }
+            ?: return false
+        val overlay = healthDataApi.getOverlayEntriesForRange(workoutId, workoutId + 1)
+            .firstOrNull {
+                it.startTime == workoutId && it.type in BUILTIN_WORKOUT_OVERLAY_TYPES
+            }
+            ?: return false
+        if (terminal.timestampEpochSeconds <= workoutId) return false
+
+        val samples = detail
+            .asSequence()
+            .filter { it.filteredBpm in 1..300 }
+            .filter {
+                it.timestampEpochSeconds >= workoutId &&
+                    it.timestampEpochSeconds < terminal.timestampEpochSeconds
+            }
+            .sortedWith(compareBy({ it.timestampEpochSeconds }, { it.sequence }))
+            .map {
+                HeartRateExportSample(
+                    timestampSeconds = it.timestampEpochSeconds,
+                    beatsPerMinute = it.filteredBpm,
+                    sourceRecordId = it.recordId,
+                )
+            }.toList()
+        if (samples.isEmpty()) return false
+
+        if (!nativeHeartRateExporter.isActive) {
+            val written = writeHeartRateSamples(samples).getOrElse { error ->
+                tracker.recordHeartRateExportFailure(samples.size, error)
+                logger.e(error) { "HEALTH_EXPORT_BUILTIN_WORKOUT_HR failed; rows retained" }
+                return false
+            }
+            healthDataApi.markGranularHeartRateExported(detail.map { it.recordId })
+            tracker.recordSuccessfulHeartRateExport(terminal.timestampEpochSeconds)
+            logger.d {
+                "HEALTH_EXPORT_BUILTIN_WORKOUT_HR synced=${written.writtenRecords} workout=$workoutId"
+            }
+            return true
+        }
+
+        val result = nativeHeartRateExporter.writeWorkout(
+            WorkoutHeartRateExport(
+                sourceRecordId = "builtin-workout-v1:$workoutId:${overlay.type}",
+                type = when (OverlayType.fromValue(overlay.type)) {
+                    OverlayType.Walk -> WorkoutHeartRateExportType.Walking
+                    OverlayType.Run -> WorkoutHeartRateExportType.Running
+                    OverlayType.OpenWorkout -> WorkoutHeartRateExportType.Other
+                    else -> return false
+                },
+                startEpochSeconds = workoutId,
+                endEpochSeconds = terminal.timestampEpochSeconds,
+                heartRateSamples = samples,
+            ),
+        )
+        return result.fold(
+            onSuccess = { written ->
+                healthDataApi.markGranularHeartRateExported(detail.map { it.recordId })
+                tracker.recordSuccessfulHeartRateExport(terminal.timestampEpochSeconds)
+                logger.d {
+                    "HEALTH_EXPORT_BUILTIN_WORKOUT saved=${written.writtenHeartRateRecords} " +
+                        "workout=$workoutId"
+                }
+                true
+            },
+            onFailure = { error ->
+                tracker.recordHeartRateExportFailure(samples.size, error)
+                logger.e(error) { "HEALTH_EXPORT_BUILTIN_WORKOUT failed workout=$workoutId; rows retained" }
+                false
+            },
+        )
     }
 
     private suspend fun writeHeartRateSamples(
@@ -332,6 +445,43 @@ class PlatformHealthSync(
         val sleepOverlays = overlays.filter { it.type in sleepTypes }
         val exerciseOverlays = overlays.filter { it.type in exerciseTypes }
 
+        // A completed built-in Workout is already represented by the native HealthKit workout
+        // writer above. Do not send a second generic exercise session for the same overlay.
+        // If its high-resolution rows are still pending, retain the standard overlay checkpoint
+        // too, so a failed native write cannot later turn into an unassociated duplicate.
+        val nativeManagedExerciseOverlays = if (nativeHeartRateExporter.isActive) {
+            exerciseOverlays.filter { overlay ->
+                val detail = healthDataApi.getGranularHeartRateForRange(
+                    overlay.startTime,
+                    overlay.startTime + BUILTIN_WORKOUT_LOOKUP_WINDOW_SECONDS,
+                ).filter {
+                    it.workoutId == overlay.startTime &&
+                        BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId)
+                }
+                detail.isNotEmpty()
+            }
+        } else {
+            emptyList()
+        }
+        val pendingNativeWorkout = nativeManagedExerciseOverlays.firstOrNull { overlay ->
+            healthDataApi.getGranularHeartRateForRange(
+                overlay.startTime,
+                overlay.startTime + BUILTIN_WORKOUT_LOOKUP_WINDOW_SECONDS,
+            ).any {
+                it.workoutId == overlay.startTime &&
+                    BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId) &&
+                    !it.exportedToAppleHealth
+            }
+        }
+        if (pendingNativeWorkout != null) {
+            logger.d {
+                "HEALTH_EXPORT_BUILTIN_WORKOUT awaiting native export " +
+                    "workout=${pendingNativeWorkout.startTime}"
+            }
+            return
+        }
+        val genericExerciseOverlays = exerciseOverlays - nativeManagedExerciseOverlays
+
         var maxSyncedTimestamp = lastTimestamp
 
         // Write sleep sessions separately so exercise failures don't block sleep
@@ -351,7 +501,7 @@ class PlatformHealthSync(
 
         // Write exercise records separately
         val exerciseRecords = mutableListOf<HealthRecord>()
-        for (overlay in exerciseOverlays) {
+        for (overlay in genericExerciseOverlays) {
             if (overlay.duration <= 0) continue
             val startTime = Instant.fromEpochSeconds(overlay.startTime)
             val endTime = startTime + overlay.duration.seconds
@@ -381,13 +531,19 @@ class PlatformHealthSync(
         if (exerciseRecords.isNotEmpty()) {
             val result = healthManager.writeData(exerciseRecords)
             if (result.isSuccess) {
-                maxSyncedTimestamp = maxOf(maxSyncedTimestamp, exerciseOverlays.maxOf { it.startTime })
+                maxSyncedTimestamp = maxOf(maxSyncedTimestamp, genericExerciseOverlays.maxOf { it.startTime })
                 logger.d { "Synced ${exerciseRecords.size} exercise records" }
             } else {
                 logger.e { "Failed to write exercise records: ${result.exceptionOrNull()}" }
             }
-        } else if (exerciseOverlays.isNotEmpty()) {
-            maxSyncedTimestamp = maxOf(maxSyncedTimestamp, exerciseOverlays.maxOf { it.startTime })
+        } else if (genericExerciseOverlays.isNotEmpty()) {
+            maxSyncedTimestamp = maxOf(maxSyncedTimestamp, genericExerciseOverlays.maxOf { it.startTime })
+        }
+        if (nativeManagedExerciseOverlays.isNotEmpty()) {
+            maxSyncedTimestamp = maxOf(
+                maxSyncedTimestamp,
+                nativeManagedExerciseOverlays.maxOf { it.startTime },
+            )
         }
 
         if (maxSyncedTimestamp > lastTimestamp) {
@@ -458,6 +614,7 @@ class PlatformHealthSync(
             device = Device(type = DeviceType.Watch),
         )
     }
+
 }
 
 internal data class SleepStageInterval(val startSec: Long, val endSec: Long, val isDeep: Boolean)

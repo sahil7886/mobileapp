@@ -10,6 +10,7 @@ import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import io.rebble.libpebblecommon.health.OverlayType
 import io.rebble.libpebblecommon.util.getTempFilePath
 import kotlinx.coroutines.Dispatchers
@@ -202,7 +203,7 @@ internal object HealthDataExportCsv {
             "resting_gram_calories,active_gram_calories,distance_cm,heart_rate_bpm," +
             "heart_rate_zone,heart_rate_weight"
     const val GRANULAR_HEART_RATE_HEADER =
-        "timestamp_utc,epoch_seconds,workout_id,sequence,filtered_bpm,raw_bpm,flags," +
+        "timestamp_utc,epoch_seconds,workout_id,sequence,filtered_bpm,raw_bpm,flags,sensor_quality," +
             "received_at_utc,received_at_epoch_seconds,exported_to_apple_health,record_id"
     const val OVERLAYS_HEADER =
         "start_utc,start_epoch_seconds,end_utc,end_epoch_seconds,duration_seconds,type,type_name," +
@@ -217,7 +218,8 @@ internal object HealthDataExportCsv {
 
     fun granularHeartRateRow(row: GranularHeartRateEntity): String = csvRow(
         timestamp(row.timestampEpochSeconds), row.timestampEpochSeconds, row.workoutId, row.sequence,
-        row.filteredBpm, row.rawBpm, row.flags, timestamp(row.receivedAtEpochSeconds),
+        row.filteredBpm, row.rawBpm, row.flags and 0xff,
+        BuiltinWorkoutHeartRateProtocol.sensorQuality(row) ?: "", timestamp(row.receivedAtEpochSeconds),
         row.receivedAtEpochSeconds, row.exportedToAppleHealth, row.recordId,
     )
 
@@ -272,10 +274,11 @@ internal object HealthDataExportCsv {
           when no system-health HR reading was stored for that minute; rows do not invent samples.
 
         workout_heart_rate.csv
-          High-resolution records received from the optional Health Capture worker. It preserves
-          the watch workout ID, persistent sequence, filtered BPM, raw BPM, flags, receipt time,
-          database ID, and Apple Health export status. Raw BPM is a diagnostic sensor field, not a
-          beat-to-beat interval and not a clinical measurement.
+          High-resolution records received from Health Capture or the built-in Workout service. It
+          preserves the watch workout ID, persistent sequence, BPM, flags, sensor quality when
+          supplied by the built-in service, receipt time, database ID, and Apple Health export
+          status. Raw BPM is a diagnostic sensor field, not a beat-to-beat interval and not a
+          clinical measurement.
 
         sleep_and_activity.csv
           All persisted Pebble overlay intervals that overlap the selected range, including sleep,
@@ -283,9 +286,9 @@ internal object HealthDataExportCsv {
           selected range when it continues into it (for example, an overnight sleep session).
 
         beat_to_beat.csv
-          This file is deliberately header-only. The current Pebble Health Capture pipeline does
-          not collect PPI/IBI/RR (beat-to-beat) intervals, so there are no such values to export.
-          Raw BPM must not be interpreted as beat-to-beat data or used as an HRV calculation input.
+          This file is deliberately header-only. The current pipelines do not collect PPI/IBI/RR
+          (beat-to-beat) intervals, so there are no such values to export. Raw BPM must not be
+          interpreted as beat-to-beat data or used as an HRV calculation input.
 
         manifest.json
           Machine-readable export range, record counts, and beat-to-beat availability.
