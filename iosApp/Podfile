@@ -6,3 +6,22 @@ use_frameworks!
 target 'iosApp' do
         pod 'composeApp', :path => '../composeApp'
 end
+
+post_install do |installer|
+  java_home = ENV['JAVA_HOME']
+  if java_home.nil? || java_home.empty?
+    homebrew_java_home = '/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home'
+    java_home = homebrew_java_home if File.executable?(File.join(homebrew_java_home, 'bin/java'))
+  end
+
+  next if java_home.nil? || java_home.empty?
+
+  installer.pods_project.targets.each do |target|
+    next unless target.name == 'composeApp'
+
+    target.build_configurations.each do |configuration|
+      configuration.build_settings['JAVA_HOME'] = java_home
+      configuration.build_settings['PATH'] = "#{java_home}/bin:$(PATH)"
+    end
+  end
+end
