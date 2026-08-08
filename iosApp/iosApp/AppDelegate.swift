@@ -38,20 +38,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         IOSDelegate.shared.applicationDidReceiveMemoryWarning()
     }
     
-    func application(
-        _ application: UIApplication,
-        configurationForConnecting connectingSceneSession: UISceneSession,
-        options: UIScene.ConnectionOptions
-    ) -> UISceneConfiguration {
-        let configuration = UISceneConfiguration(
-            name: nil,
-            sessionRole: connectingSceneSession.role)
-        if connectingSceneSession.role == .windowApplication {
-            configuration.delegateClass = SceneDelegate.self
-        }
-        return configuration
-    }
-    
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.alert, .sound, .badge])
     }
@@ -62,23 +48,5 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([any UIUserActivityRestoring]?) -> Void) -> Bool {
         return IOSDelegate.shared.applicationWillContinue(userActivity: userActivity)
-    }
-}
-
-class SceneDelegate: NSObject, UIWindowSceneDelegate, ObservableObject {
-    func sceneDidBecomeActive(_ scene: UIScene) {
-        IOSDelegate.shared.sceneDidBecomeActive()
-    }
-
-    func sceneWillResignActive(_ scene: UIScene) {
-        IOSDelegate.shared.sceneWillResignActive()
-    }
-
-    func sceneWillEnterForeground(_ scene: UIScene) {
-        IOSDelegate.shared.sceneWillEnterForeground()
-    }
-
-    func sceneDidEnterBackground(_ scene: UIScene) {
-        IOSDelegate.shared.sceneDidEnterBackground()
     }
 }
