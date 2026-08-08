@@ -36,10 +36,13 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
+import org.koin.mp.KoinPlatform
 
 @Composable
 fun SttModelUpdatePrompt() {
-    val modelProvider: CactusModelPathProvider = koinInject()
+    val modelProvider = remember {
+        runCatching { KoinPlatform.getKoin().get<CactusModelPathProvider>() }.getOrNull()
+    } ?: return
     val modelManager: ModelManager = koinInject()
     val configHolder: CoreConfigHolder = koinInject()
     val settings: Settings = koinInject()
