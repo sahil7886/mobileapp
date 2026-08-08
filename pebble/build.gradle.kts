@@ -74,6 +74,7 @@ kotlin {
                 implementation(libs.settings)
                 implementation(libs.settings.test)
                 implementation(libs.settings.serialization)
+                implementation(libs.kmpio)
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.contentNegotiation)
                 implementation(libs.ktor.client.serialization.json)

@@ -15,6 +15,7 @@ import coredevices.pebble.firmware.FirmwareUpdateCheck
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
 import coredevices.pebble.firmware.RealBatteryChargedNotifier
 import coredevices.pebble.firmware.RealFirmwareUpdateUiTracker
+import coredevices.pebble.health.HealthDataExporter
 import coredevices.pebble.firmware.postWatchFullyChargedNotification
 import coredevices.pebble.services.AppstoreCache
 import coredevices.pebble.services.AppstoreService
@@ -122,6 +123,7 @@ val watchModule = module {
     factory<Clock> { Clock.System }
     singleOf(::RealPebbleAccount) bind PebbleAccount::class
     single { HealthManagerFactory().createManager() }
+    singleOf(::HealthDataExporter)
     singleOf(::RealAppstoreCache) bind AppstoreCache::class
     single { MobileGeocoder() } bind Geocoder::class
     single<HealthDataApi> { get<LibPebble>() }

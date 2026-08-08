@@ -42,6 +42,23 @@ The app requests only sharing permission for the vertical-slice heart-rate write
 does not inspect other Apple Health sources and the export screen truthfully reports conflicts as
 “Not checked”.
 
+## Local Pebble data export
+
+**Health → Export Pebble health data** creates and opens an iOS share sheet for a local ZIP. It
+does not upload health data. Choose a rolling **7-day**, **30-day**, or **six-month (180-day)** UTC
+window. The ZIP is deliberately split into small, interoperable CSVs instead of one wide file:
+
+| File | Contents |
+| --- | --- |
+| `minute_health.csv` | Every persisted system-health minute record: movement, calories, distance, and any stored HR/zone values. A zero HR means no HR value was stored for that minute. |
+| `workout_heart_rate.csv` | Every received Health Capture worker record, including filtered BPM, raw diagnostic BPM, flags, UTC times, persistent workout/sequence IDs, and Apple Health export state. |
+| `sleep_and_activity.csv` | Every persisted overlay interval overlapping the range: sleep, deep sleep, naps, walking, running, and open workouts. |
+| `beat_to_beat.csv` | Header-only placeholder. The current worker does **not** collect PPI/IBI/RR beat-to-beat intervals. Raw BPM is not beat-to-beat data. |
+| `manifest.json` / `README.txt` | Record counts, exact UTC bounds, field definitions, and availability caveats. |
+
+The archive represents data that the phone received from Pebble and stored locally. It is not an
+Apple Health export and cannot include watch-sensor values that Pebble's public API never exposed.
+
 ## Manual test on Pebble Time 2 and iPhone
 
 1. On macOS, follow the repository's iOS build setup, set a development signing team, and run the
@@ -59,11 +76,15 @@ does not inspect other Apple Health sources and the export screen truthfully rep
    Heart Rate sharing. Press **Sync now**.
 6. Check the status page: platform is available, permission is allowed, **Pending workout HR
    records** becomes zero, failed records is zero, and the last successful sync advances.
-7. In Apple Health, inspect Heart Rate and confirm filtered points at the Pebble timestamps with
+7. Open **Health → Export Pebble health data**, select **Past 7 days**, and save or share the ZIP.
+   Confirm that it includes the six files described above; confirm `workout_heart_rate.csv` has
+   the received workout rows and `beat_to_beat.csv` is header-only. Repeat with 30 days and six
+   months to check the requested range and record counts in `manifest.json`.
+8. In Apple Health, inspect Heart Rate and confirm filtered points at the Pebble timestamps with
    this app as source. Measure their spacing and check for repeated/stale values; do not assume the
    requested 5-second cadence was delivered. Press **Sync now** a second time and confirm that
    Apple Health does not gain duplicate points.
-8. Only after step 7 succeeds, open Bevel and check whether those Apple Health records are visible.
+9. Only after step 8 succeeds, open Bevel and check whether those Apple Health records are visible.
    Record the iOS version, app build, timestamp, Apple Health screenshot, and Bevel result. A
    missing Bevel display is a test failure/compatibility finding, not evidence that the export
    succeeded.

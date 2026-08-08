@@ -32,6 +32,10 @@
   HR with UTC timestamps and persistent sequence IDs through local-first Datalogging.
 - [x] Persist worker records before DataLogging ACK, deduplicate them by workout + sequence ID, and
   export filtered points through replay-safe HealthKit sync identifiers.
+- [x] Add an on-device, shareable ZIP export for rolling 7-day, 30-day, and six-month windows.
+  It contains separate CSVs for all locally persisted minute health, received workout HR (filtered
+  and raw diagnostic BPM), and sleep/activity overlays, plus a manifest and field documentation.
+  It transparently includes a header-only beat-to-beat CSV because PPI/IBI/RR is not collected yet.
 
 ## Partial / requires physical validation
 

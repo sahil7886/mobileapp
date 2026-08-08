@@ -1,5 +1,6 @@
 package coredevices.pebble.ui
 
+import PlatformShareLauncher
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -32,6 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,7 +46,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.rebble.libpebblecommon.health.HealthTimeRange
+import coredevices.pebble.health.HealthDataExportPeriod
 import kotlinx.datetime.LocalDate
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.math.roundToInt
 
@@ -54,6 +61,16 @@ fun HealthScreen(topBarParams: TopBarParams, nav: NavBarNav) {
     val dl by vm.dateLabel.collectAsState()
     val imperial by vm.imperialUnits.collectAsState()
     val hasHrmWatch by vm.hasHrmWatch.collectAsState()
+    val dataExport by vm.healthDataExport.collectAsState()
+    val shareLauncher = koinInject<PlatformShareLauncher>()
+    var showDataExportDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(dataExport) {
+        val ready = dataExport as? HealthDataExportUiState.ReadyToShare ?: return@LaunchedEffect
+        runCatching { shareLauncher.share(ready.export.fileName, ready.export.file) }
+            .onSuccess { vm.onHealthDataExportShared() }
+            .onFailure(vm::onHealthDataExportShareFailed)
+    }
 
     LaunchedEffect(Unit) {
         topBarParams.title("Health")
@@ -64,6 +81,16 @@ fun HealthScreen(topBarParams: TopBarParams, nav: NavBarNav) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp)
     ) {
+        if (showDataExportDialog) {
+            HealthDataExportDialog(
+                exporting = dataExport is HealthDataExportUiState.Exporting,
+                onDismiss = { showDataExportDialog = false },
+                onExport = {
+                    showDataExportDialog = false
+                    vm.exportHealthData(it)
+                },
+            )
+        }
         TimeRangeSelector(vm.selectedTimeRange, vm::onTimeRangeChanged)
         DateNavigator(dl, vm.dateOffset, vm::navigateBack, vm::navigateForward)
         Column(
@@ -78,6 +105,30 @@ fun HealthScreen(topBarParams: TopBarParams, nav: NavBarNav) {
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             ) {
                 Text("Apple Health export status")
+            }
+            TextButton(
+                onClick = {
+                    vm.clearHealthDataExportError()
+                    showDataExportDialog = true
+                },
+                enabled = dataExport !is HealthDataExportUiState.Exporting,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
+                Text(
+                    if (dataExport is HealthDataExportUiState.Exporting) {
+                        "Preparing health data export…"
+                    } else {
+                        "Export Pebble health data"
+                    },
+                )
+            }
+            (dataExport as? HealthDataExportUiState.Failed)?.let { failure ->
+                Text(
+                    "Health data export failed: ${failure.message}",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                )
             }
             TextButton(
                 onClick = {
@@ -97,6 +148,46 @@ fun HealthScreen(topBarParams: TopBarParams, nav: NavBarNav) {
             Spacer(Modifier.height(8.dp))
         }
     }
+}
+
+@Composable
+private fun HealthDataExportDialog(
+    exporting: Boolean,
+    onDismiss: () -> Unit,
+    onExport: (HealthDataExportPeriod) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!exporting) onDismiss() },
+        title = { Text("Export Pebble health data") },
+        text = {
+            Column {
+                Text(
+                    "Creates a local ZIP with separate CSVs for minute health, workout HR " +
+                        "(including raw BPM and sequence IDs), sleep/activity intervals, and metadata.",
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "No data is uploaded. Beat-to-beat PPI/IBI has not been collected yet, so " +
+                        "that CSV is included as a clearly marked header-only file.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                HealthDataExportPeriod.entries.forEach { period ->
+                    TextButton(
+                        onClick = { onExport(period) },
+                        enabled = !exporting,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(period.displayName, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = !exporting) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable

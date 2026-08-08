@@ -186,6 +186,11 @@ class Health(
     override suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity> =
         healthDao.getPendingGranularHeartRate(limit)
 
+    override suspend fun getGranularHeartRateForRange(
+        start: Long,
+        end: Long,
+    ): List<GranularHeartRateEntity> = healthDao.getGranularHeartRateForRange(start, end)
+
     override suspend fun markGranularHeartRateExported(recordIds: List<String>): Int =
         if (recordIds.isEmpty()) 0 else healthDao.markGranularHeartRateExported(recordIds)
 
@@ -199,6 +204,11 @@ class Health(
 
     override suspend fun getHealthDataForRange(start: Long, end: Long): List<HealthDataEntity> =
         healthDao.getHealthDataForRange(start, end)
+
+    override suspend fun getOverlayEntriesForRange(
+        start: Long,
+        end: Long,
+    ): List<OverlayDataEntity> = healthDao.getOverlayEntriesForRange(start, end)
 
     override suspend fun getDailyAggregates(start: Long, end: Long) =
         healthDao.getDailyMovementAggregates(start, end)

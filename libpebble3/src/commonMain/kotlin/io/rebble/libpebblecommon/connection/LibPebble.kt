@@ -155,6 +155,12 @@ interface HealthDataApi {
     /** High-resolution records written by the optional Health Capture worker and not yet exported. */
     suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity>
 
+    /**
+     * Every high-resolution worker record in the range, including raw-only diagnostics that are
+     * intentionally ineligible for Apple Health export.
+     */
+    suspend fun getGranularHeartRateForRange(start: Long, end: Long): List<GranularHeartRateEntity>
+
     /** Completes the durable per-record export checkpoint after Apple Health accepts the batch. */
     suspend fun markGranularHeartRateExported(recordIds: List<String>): Int
 
@@ -162,6 +168,9 @@ interface HealthDataApi {
 
     /** Returns minute-level health data for the given epoch-second range. */
     suspend fun getHealthDataForRange(start: Long, end: Long): List<HealthDataEntity>
+
+    /** Returns every recorded sleep/activity overlay whose interval intersects the range. */
+    suspend fun getOverlayEntriesForRange(start: Long, end: Long): List<OverlayDataEntity>
 
     /** Returns per-day step/calorie/distance/active-minute aggregates for the range. */
     suspend fun getDailyAggregates(start: Long, end: Long): List<DailyMovementAggregate>

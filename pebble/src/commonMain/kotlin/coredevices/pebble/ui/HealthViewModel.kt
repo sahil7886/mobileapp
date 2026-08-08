@@ -11,6 +11,9 @@ import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.database.dao.DailyMovementAggregate
 import io.rebble.libpebblecommon.health.HealthTimeRange
 import io.rebble.libpebblecommon.health.OverlayType
+import coredevices.pebble.health.HealthDataExport
+import coredevices.pebble.health.HealthDataExporter
+import coredevices.pebble.health.HealthDataExportPeriod
 import io.rebble.libpebblecommon.metadata.supportsHrm
 
 import io.rebble.libpebblecommon.services.DailySleep
@@ -95,8 +98,16 @@ data class HeartRateUiState(
     val isLoading: Boolean = true,
 )
 
+sealed interface HealthDataExportUiState {
+    data object Idle : HealthDataExportUiState
+    data object Exporting : HealthDataExportUiState
+    data class ReadyToShare(val export: HealthDataExport) : HealthDataExportUiState
+    data class Failed(val message: String) : HealthDataExportUiState
+}
+
 class HealthViewModel(
     private val libPebble: LibPebble,
+    private val healthDataExporter: HealthDataExporter,
 ) : ViewModel() {
     var selectedTimeRange by mutableStateOf(HealthTimeRange.Daily)
     var dateOffset by mutableStateOf(0)
@@ -117,6 +128,8 @@ class HealthViewModel(
     val heartRate: StateFlow<HeartRateUiState> = _heartRate.asStateFlow()
     private val _dateLabel = MutableStateFlow("")
     val dateLabel: StateFlow<String> = _dateLabel.asStateFlow()
+    private val _healthDataExport = MutableStateFlow<HealthDataExportUiState>(HealthDataExportUiState.Idle)
+    val healthDataExport: StateFlow<HealthDataExportUiState> = _healthDataExport.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -136,6 +149,41 @@ class HealthViewModel(
 
     fun navigateBack() { dateOffset-- }
     fun navigateForward() { if (dateOffset < 0) dateOffset++ }
+
+    fun exportHealthData(period: HealthDataExportPeriod) {
+        if (_healthDataExport.value is HealthDataExportUiState.Exporting) return
+        viewModelScope.launch {
+            _healthDataExport.value = HealthDataExportUiState.Exporting
+            _healthDataExport.value = runCatching { healthDataExporter.export(period) }
+                .fold(
+                    onSuccess = { HealthDataExportUiState.ReadyToShare(it) },
+                    onFailure = {
+                        HealthDataExportUiState.Failed(
+                            it.message ?: "The health data archive could not be created.",
+                        )
+                    },
+                )
+        }
+    }
+
+    /** Called once the native iOS share sheet has been presented for the completed archive. */
+    fun onHealthDataExportShared() {
+        if (_healthDataExport.value is HealthDataExportUiState.ReadyToShare) {
+            _healthDataExport.value = HealthDataExportUiState.Idle
+        }
+    }
+
+    fun onHealthDataExportShareFailed(error: Throwable) {
+        _healthDataExport.value = HealthDataExportUiState.Failed(
+            error.message ?: "The health data archive was created but could not be shared.",
+        )
+    }
+
+    fun clearHealthDataExportError() {
+        if (_healthDataExport.value is HealthDataExportUiState.Failed) {
+            _healthDataExport.value = HealthDataExportUiState.Idle
+        }
+    }
 
     private suspend fun loadData(range: HealthTimeRange, offset: Int) {
         val tz = TimeZone.currentSystemDefault()

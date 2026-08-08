@@ -473,6 +473,11 @@ class FakeLibPebble : LibPebble {
 
     override suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity> = emptyList()
 
+    override suspend fun getGranularHeartRateForRange(
+        start: Long,
+        end: Long,
+    ): List<GranularHeartRateEntity> = emptyList()
+
     override suspend fun markGranularHeartRateExported(recordIds: List<String>): Int = recordIds.size
 
     override suspend fun countPendingGranularHeartRate(): Int = 0
@@ -483,6 +488,7 @@ class FakeLibPebble : LibPebble {
     ): List<OverlayDataEntity> = emptyList()
 
     override suspend fun getHealthDataForRange(start: Long, end: Long) = emptyList<HealthDataEntity>()
+    override suspend fun getOverlayEntriesForRange(start: Long, end: Long) = emptyList<OverlayDataEntity>()
     override suspend fun getDailyAggregates(start: Long, end: Long) = emptyList<DailyMovementAggregate>()
     override suspend fun getTotalHealthData(start: Long, end: Long): HealthAggregates? = null
     override suspend fun getAverageHeartRate(start: Long, end: Long): Double? = null

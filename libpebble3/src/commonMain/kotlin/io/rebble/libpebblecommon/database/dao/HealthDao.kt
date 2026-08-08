@@ -32,6 +32,17 @@ interface HealthDao {
         """)
     suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity>
 
+    /**
+     * Includes both filtered and raw-only worker records.  The latter cannot be written to
+     * HealthKit as a heart-rate measurement, but must remain available to a user data export.
+     */
+    @Query("""
+        SELECT * FROM granular_heart_rate
+        WHERE timestampEpochSeconds >= :start AND timestampEpochSeconds < :end
+        ORDER BY timestampEpochSeconds ASC, sequence ASC, recordId ASC
+        """)
+    suspend fun getGranularHeartRateForRange(start: Long, end: Long): List<GranularHeartRateEntity>
+
     @Query("""
         UPDATE granular_heart_rate
         SET exportedToAppleHealth = 1
@@ -108,6 +119,19 @@ interface HealthDao {
             end: Long,
             types: List<Int>
     ): List<OverlayDataEntity>
+
+    /**
+     * All overlay kinds whose recorded interval intersects the requested half-open range.
+     * This deliberately retains a sleep or workout that began before the range but ended within
+     * it, so a local export does not silently lose the beginning of an overnight session.
+     */
+    @Query("""
+        SELECT * FROM overlay_data
+        WHERE (startTime >= :start AND startTime < :end)
+           OR (startTime < :start AND startTime + duration > :start)
+        ORDER BY startTime ASC, type ASC
+        """)
+    suspend fun getOverlayEntriesForRange(start: Long, end: Long): List<OverlayDataEntity>
 
     @Query("SELECT * FROM overlay_data ORDER BY startTime ASC")
     suspend fun getAllOverlayEntries(): List<OverlayDataEntity>
