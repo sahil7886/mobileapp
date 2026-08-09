@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import co.touchlab.kermit.Logger
@@ -72,7 +73,7 @@ fun SignInButtons(
         PebbleElevatedButton(
             text = "Sign in with Apple",
             primaryColor = primaryColor,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag("onboarding_sign_in_apple"),
             onClick = {
                 // The native authorization sheet can temporarily dispose the
                 // Compose layer, so the coroutine must outlive this composition.

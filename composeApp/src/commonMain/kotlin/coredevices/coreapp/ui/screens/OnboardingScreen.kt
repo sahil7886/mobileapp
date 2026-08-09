@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -157,6 +158,7 @@ fun OnboardingScreen(
                                 viewModel.stage.value = OnboardingStage.DeviceSelection
                             },
                             primaryColor = true,
+                            modifier = Modifier.testTag("onboarding_get_started"),
                         )
                     }
                 }
@@ -204,6 +206,7 @@ fun OnboardingScreen(
                                 viewModel.deviceChoice.value = DeviceChoice.Both
                                 viewModel.stage.value = OnboardingStage.Permissions
                             },
+                            modifier = Modifier.testTag("onboarding_both"),
                         )
                     }
                 }
@@ -305,6 +308,7 @@ fun OnboardingScreen(
                             text = "Connect a Pebble!",
                             onClick = ::exitOnboarding,
                             primaryColor = true,
+                            modifier = Modifier.testTag("onboarding_connect_pebble"),
                         )
                     }
                 }
@@ -319,6 +323,7 @@ private fun DeviceChoiceCard(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
         onClick = onClick,
@@ -327,7 +332,7 @@ private fun DeviceChoiceCard(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ),
-        modifier = Modifier.width(140.dp),
+        modifier = modifier.width(140.dp),
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(20.dp),
