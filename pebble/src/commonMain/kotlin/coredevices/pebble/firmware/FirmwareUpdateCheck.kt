@@ -19,6 +19,7 @@ import kotlin.time.Instant
 class FirmwareUpdateCheck(
     private val memfault: Memfault,
     private val engDashOta: EngDashOta,
+    private val gitHubFirmwareReleaseFeed: GitHubFirmwareReleaseFeed,
     private val cohorts: Cohorts,
     private val coreConfig: CoreConfigFlow,
     private val clock: Clock = Clock.System,
@@ -85,11 +86,16 @@ class FirmwareUpdateCheck(
             }
             logger.w { "eng-dash OTA check failed (${result.error}); falling back" }
         }
-        return if (CommonBuildKonfig.MEMFAULT_TOKEN != null) {
-            memfault.getLatestFirmware(watch)
-        } else {
-            cohorts.getLatestFirmware(watch)
+
+        if (CommonBuildKonfig.MEMFAULT_TOKEN != null) {
+            val result = memfault.getLatestFirmware(watch)
+            if (result !is FirmwareUpdateCheckResult.UpdateCheckFailed) {
+                return result
+            }
+            logger.w { "Memfault OTA check failed (${result.error}); falling back to public release feed" }
         }
+
+        return gitHubFirmwareReleaseFeed.getLatestFirmware(watch)
     }
 
     companion object {

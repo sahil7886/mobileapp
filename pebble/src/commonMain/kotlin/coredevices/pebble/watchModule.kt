@@ -13,6 +13,7 @@ import coredevices.pebble.firmware.BatteryChargedNotifier
 import coredevices.pebble.firmware.Cohorts
 import coredevices.pebble.firmware.FirmwareUpdateCheck
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
+import coredevices.pebble.firmware.GitHubFirmwareReleaseFeed
 import coredevices.pebble.firmware.RealBatteryChargedNotifier
 import coredevices.pebble.firmware.RealFirmwareUpdateUiTracker
 import coredevices.pebble.health.HealthDataExporter
@@ -174,6 +175,7 @@ val watchModule = module {
     factoryOf(::LibPebbleConfig)
     singleOf(::Memfault)
     singleOf(::EngDashOta)
+    singleOf(::GitHubFirmwareReleaseFeed)
     singleOf(::MemfaultChunkQueue)
     singleOf(::AnalyticsIngest)
     singleOf(::AnalyticsHeartbeatQueue)
