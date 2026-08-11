@@ -23,6 +23,13 @@ local log, and transfers through the existing companion connection. The phone pe
 before ACKing, waits for the matching standard session, then creates one native `HKWorkout` with
 those heart-rate samples attached. Neither path uses AppMessage for sensor data.
 
+For a Time 2 firmware build with `CONFIG_HRM_HRV=y`, the same built-in Workout subscription adds
+the HRV feature only while a manual Workout is running. Every accepted PPI/RR interval then goes
+to a second buffered, versioned 16-byte DataLogging session. It retains its own sequence because
+more than one interval can arrive in a UTC second; its zero-interval terminal record is a transfer
+commit marker, not a heartbeat. The phone stores it idempotently in `beat_to_beat` and never
+fabricates PPI from BPM.
+
 `watchapps/health-capture` remains a separate prototype and diagnostic tool. It is not required for
 the built-in Workout path and does not create the normal Pebble activity session.
 
@@ -58,7 +65,7 @@ window. The ZIP is deliberately split into small, interoperable CSVs instead of 
 | `minute_health.csv` | Every persisted system-health minute record: movement, calories, distance, and any stored HR/zone values. A zero HR means no HR value was stored for that minute. |
 | `workout_heart_rate.csv` | Every received Health Capture or built-in Workout record, including BPM, flags, built-in sensor quality where available, UTC times, persistent workout/sequence IDs, and Apple Health export state. A built-in terminal row has `filtered_bpm=0` and records the precise workout end. |
 | `sleep_and_activity.csv` | Every persisted overlay interval overlapping the range: sleep, deep sleep, naps, walking, running, and open workouts. |
-| `beat_to_beat.csv` | Header-only placeholder. The current worker does **not** collect PPI/IBI/RR beat-to-beat intervals. Raw BPM is not beat-to-beat data. |
+| `beat_to_beat.csv` | Every accepted PPI/RR interval received from the built-in Workout, including Workout/sequence ID, timestamp, milliseconds, sensor quality, flags, and receipt time. A final zero-interval row is the exact Workout-stop commit marker. |
 | `manifest.json` / `README.txt` | Record counts, exact UTC bounds, field definitions, and availability caveats. |
 
 The archive represents data that the phone received from Pebble and stored locally. It is not an
@@ -71,9 +78,10 @@ Apple Health export and cannot include watch-sensor values that Pebble's public 
 2. Pair the Pebble Time 2 with this fork. Do not allow another companion app to own the connection
    while testing.
 3. Build and flash this PebbleOS fork for the board revision of the physical Time 2. The supported
-   Time 2 board variants are listed in `PebbleOS/docs/development/options.md`; do not flash a
-   firmware image for a different hardware revision. No additional watch app is installed for this
-   test.
+   Time 2 board variants are listed in `../PebbleOS/docs/development/options.md`; do not flash a
+   firmware image for a different hardware revision. This fork has passed a release `obelix@pvt`
+   build with `CONFIG_HRM_HRV=y`, but has not been flashed in this environment. No additional
+   watch app is installed for this test.
 4. On the watch, start an ordinary **Workout** and wear it for more than one minute—the existing
    session workflow intentionally does not save sub-minute workouts. Stop it normally. The watch
    retains the detailed log locally whether or not the phone was connected.
@@ -88,7 +96,10 @@ Apple Health export and cannot include watch-sensor values that Pebble's public 
    workout or point is created.
 8. Open **Health → Export Pebble health data**, select **Past 7 days**, and save or share the ZIP.
    Confirm that `workout_heart_rate.csv` contains `builtin-workout-v1` IDs, BPM rows, and a final
-   zero-BPM completion row at the actual stop time. `beat_to_beat.csv` must remain header-only.
+   zero-BPM completion row at the actual stop time. Confirm `beat_to_beat.csv` contains
+   `builtin-workout-ppi-v1` rows, each nonzero interval in milliseconds, and a final zero-interval
+   completion row. Re-run sync or force-close/reopen the phone app and verify the row IDs are not
+   duplicated.
 9. Only after step 7 succeeds, open Bevel and check whether those Apple Health records are visible.
    Record the iOS version, app build, timestamp, Apple Health screenshot, and Bevel result. A
    missing Bevel display is a test failure/compatibility finding, not evidence that the export
@@ -102,12 +113,12 @@ requests one-second BPM updates; the new log records no more than one accepted A
 second. Measure actual timestamp spacing, battery loss per hour, sensor quality, dropped-log
 counts, and watch temperature before calling one-second sampling production-safe.
 
-Apple Health's HRV type is SDNN in milliseconds. Current PebbleOS source contains an opt-in PPI
-(peak-to-peak interval) API, but neither the prototype nor the built-in Workout addition requests
-or logs it. That is why `beat_to_beat.csv` is empty even when workout BPM export succeeds. First
-verify that the shipped Time 2 firmware exposes it, capture enough quality-controlled overnight
-intervals, and validate the SDNN algorithm. Do not write RMSSD values into the SDNN type or claim
-Bevel compatibility until a physical Apple Health + Bevel test passes.
+Apple Health's HRV type is SDNN in milliseconds. The Time 2 PPI stream is **not** written to Apple
+Health directly: raw PPI is an input series, while HealthKit accepts an SDNN aggregate. This slice
+captures raw PPI only during manually started built-in Workouts, not sleep, and therefore must not
+be called overnight HRV. First validate an overnight, quality-controlled collection policy and a
+documented SDNN algorithm. Do not write RMSSD values into the SDNN type or claim Bevel
+compatibility until a physical Apple Health + Bevel test passes.
 
 ## Confirmed HealthKit mapping for later slices
 
@@ -130,9 +141,10 @@ For a point sample its end date equals its start date. The relevant primary docu
 ## Built-in Workout implementation status
 
 The PebbleOS built-in Workout source, phone Datalogging receiver, and iOS `HKWorkoutBuilder` path
-are implemented in this fork. They have not yet been compiled, flashed, or exercised on a physical
-Time 2/iPhone in this environment. Treat sampling cadence, battery impact, Apple Health association,
-retry behavior, and Bevel display as validation gates, not completed claims.
+are implemented in this fork. Release builds passed for `qemu_emery` and HRV-enabled `obelix@pvt`.
+They have not been flashed or exercised on a physical Time 2/iPhone in this environment. Treat
+sampling cadence, battery impact, PPI quality, Apple Health association, retry behavior, and Bevel
+display as validation gates, not completed claims.
 
 ## Health Capture prototype status
 

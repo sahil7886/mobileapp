@@ -16,6 +16,7 @@ class Datalogging(
     private val healthDataProcessor: HealthDataProcessor,
     private val healthCaptureDataProcessor: HealthCaptureDataProcessor,
     private val builtinWorkoutHeartRateDataProcessor: BuiltinWorkoutHeartRateDataProcessor,
+    private val builtinWorkoutPpiDataProcessor: BuiltinWorkoutPpiDataProcessor,
 ) {
     private val logger = Logger.withTag("Datalogging")
 
@@ -47,6 +48,10 @@ class Datalogging(
 
         if (uuid == SYSTEM_APP_UUID && tag == BuiltinWorkoutHeartRateProtocol.DATA_LOGGING_TAG) {
             return builtinWorkoutHeartRateDataProcessor.process(data, itemSize)
+        }
+
+        if (uuid == SYSTEM_APP_UUID && tag == BuiltinWorkoutPpiProtocol.DATA_LOGGING_TAG) {
+            return builtinWorkoutPpiDataProcessor.process(data, itemSize)
         }
 
         // Handle system-app datalogging tags
@@ -96,6 +101,9 @@ class Datalogging(
         if (applicationUuid == SYSTEM_APP_UUID && tag == BuiltinWorkoutHeartRateProtocol.DATA_LOGGING_TAG) {
             logger.d { "BUILTIN_WORKOUT_HR session=$sessionId itemSize=$itemSize opened" }
         }
+        if (applicationUuid == SYSTEM_APP_UUID && tag == BuiltinWorkoutPpiProtocol.DATA_LOGGING_TAG) {
+            logger.d { "BUILTIN_WORKOUT_PPI session=$sessionId itemSize=$itemSize opened" }
+        }
     }
 
     fun closeSession(sessionId: UByte, tag: UInt) {
@@ -107,6 +115,9 @@ class Datalogging(
         }
         if (tag == BuiltinWorkoutHeartRateProtocol.DATA_LOGGING_TAG) {
             logger.d { "BUILTIN_WORKOUT_HR session=$sessionId closed" }
+        }
+        if (tag == BuiltinWorkoutPpiProtocol.DATA_LOGGING_TAG) {
+            logger.d { "BUILTIN_WORKOUT_PPI session=$sessionId closed" }
         }
     }
 

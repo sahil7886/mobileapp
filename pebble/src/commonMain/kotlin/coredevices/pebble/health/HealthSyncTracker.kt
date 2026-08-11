@@ -14,6 +14,7 @@ data class HealthExportStatus(
     val lastSuccessfulSyncEpochSeconds: Long,
     val pendingHeartRateRecords: Int,
     val pendingGranularHeartRateRecords: Int,
+    val storedBeatToBeatRecords: Int,
     val failedHeartRateRecords: Int,
     val lastError: String?,
     /**
@@ -78,6 +79,7 @@ class HealthSyncTracker(private val settings: Settings) {
         workoutAuthorization: HealthWriteAuthorization = _status.value.workoutAuthorization,
         pendingHeartRateRecords: Int = _status.value.pendingHeartRateRecords,
         pendingGranularHeartRateRecords: Int = _status.value.pendingGranularHeartRateRecords,
+        storedBeatToBeatRecords: Int = _status.value.storedBeatToBeatRecords,
     ) {
         _status.value = snapshot(
             healthPlatformAvailable = healthPlatformAvailable,
@@ -85,6 +87,7 @@ class HealthSyncTracker(private val settings: Settings) {
             workoutAuthorization = workoutAuthorization,
             pendingHeartRateRecords = pendingHeartRateRecords,
             pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
+            storedBeatToBeatRecords = storedBeatToBeatRecords,
         )
     }
 
@@ -109,6 +112,7 @@ class HealthSyncTracker(private val settings: Settings) {
             workoutAuthorization = _status.value.workoutAuthorization,
             pendingHeartRateRecords = _status.value.pendingHeartRateRecords,
             pendingGranularHeartRateRecords = _status.value.pendingGranularHeartRateRecords,
+            storedBeatToBeatRecords = _status.value.storedBeatToBeatRecords,
         )
     }
 
@@ -118,6 +122,7 @@ class HealthSyncTracker(private val settings: Settings) {
         workoutAuthorization: HealthWriteAuthorization = HealthWriteAuthorization.NotDetermined,
         pendingHeartRateRecords: Int = 0,
         pendingGranularHeartRateRecords: Int = 0,
+        storedBeatToBeatRecords: Int = 0,
     ): HealthExportStatus = HealthExportStatus(
         healthPlatformAvailable = healthPlatformAvailable,
         heartRateAuthorization = heartRateAuthorization,
@@ -125,6 +130,7 @@ class HealthSyncTracker(private val settings: Settings) {
         lastSuccessfulSyncEpochSeconds = settings.getLong(KEY_LAST_SUCCESSFUL_EXPORT, 0L),
         pendingHeartRateRecords = pendingHeartRateRecords,
         pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
+        storedBeatToBeatRecords = storedBeatToBeatRecords,
         failedHeartRateRecords = settings.getInt(KEY_FAILED_HEART_RATE_RECORDS, 0),
         lastError = settings.getStringOrNull(KEY_LAST_ERROR),
     )

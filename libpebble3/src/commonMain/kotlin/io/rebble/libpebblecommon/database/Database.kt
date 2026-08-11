@@ -31,6 +31,7 @@ import io.rebble.libpebblecommon.database.dao.WeatherAppRealDao
 import io.rebble.libpebblecommon.database.entity.AppPrefsEntryDao
 import io.rebble.libpebblecommon.database.entity.AppPrefsEntryEntity
 import io.rebble.libpebblecommon.database.entity.AppPrefsEntrySyncEntity
+import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.CalendarEntity
 import io.rebble.libpebblecommon.database.entity.ContactEntity
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
@@ -87,6 +88,7 @@ internal const val DATABASE_FILENAME = "libpebble3.db"
         VibePatternEntity::class,
         HealthDataEntity::class,
         GranularHeartRateEntity::class,
+        BeatToBeatEntity::class,
         OverlayDataEntity::class,
         HealthStatEntity::class,
         HealthStatSyncEntity::class,
@@ -98,7 +100,7 @@ internal const val DATABASE_FILENAME = "libpebble3.db"
         AppPrefsEntrySyncEntity::class,
         NotificationRuleEntity::class,
     ],
-    version = 44,
+    version = 45,
     autoMigrations = [
         AutoMigration(from = 10, to = 11),
         AutoMigration(from = 11, to = 12),
@@ -133,7 +135,9 @@ internal const val DATABASE_FILENAME = "libpebble3.db"
         AutoMigration(from = 40, to = 41),
         AutoMigration(from = 41, to = 42),
         AutoMigration(from = 42, to = 43),
-        AutoMigration(from = 43, to = 44),
+        // 43 -> 44 and 44 -> 45 are explicit migrations below. The prior health tables were
+        // introduced without checked-in Room schema snapshots, so an auto-migration would be
+        // unsafe for an installed user's local health database.
     ],
     exportSchema = true,
 )
@@ -177,9 +181,68 @@ val MIGRATION_39_40 = object : Migration(39, 40) {
     }
 }
 
+/** Retains prior local health records while adding the high-resolution workout HR table. */
+val MIGRATION_43_44 = object : Migration(43, 44) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `granular_heart_rate` (
+              `recordId` TEXT NOT NULL,
+              `workoutId` INTEGER NOT NULL,
+              `sequence` INTEGER NOT NULL,
+              `timestampEpochSeconds` INTEGER NOT NULL,
+              `filteredBpm` INTEGER NOT NULL,
+              `rawBpm` INTEGER NOT NULL,
+              `flags` INTEGER NOT NULL,
+              `receivedAtEpochSeconds` INTEGER NOT NULL,
+              `exportedToAppleHealth` INTEGER NOT NULL,
+              PRIMARY KEY(`recordId`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_granular_heart_rate_timestampEpochSeconds` " +
+                "ON `granular_heart_rate` (`timestampEpochSeconds`)",
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_granular_heart_rate_exportedToAppleHealth` " +
+                "ON `granular_heart_rate` (`exportedToAppleHealth`)",
+        )
+    }
+}
+
+/** Adds raw, replay-safe PPI storage without modifying the existing health tables. */
+val MIGRATION_44_45 = object : Migration(44, 45) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `beat_to_beat` (
+              `recordId` TEXT NOT NULL,
+              `workoutId` INTEGER NOT NULL,
+              `sequence` INTEGER NOT NULL,
+              `timestampEpochSeconds` INTEGER NOT NULL,
+              `intervalMs` INTEGER NOT NULL,
+              `quality` INTEGER NOT NULL,
+              `flags` INTEGER NOT NULL,
+              `receivedAtEpochSeconds` INTEGER NOT NULL,
+              PRIMARY KEY(`recordId`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_beat_to_beat_timestampEpochSeconds` " +
+                "ON `beat_to_beat` (`timestampEpochSeconds`)",
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_beat_to_beat_workoutId_sequence` " +
+                "ON `beat_to_beat` (`workoutId`, `sequence`)",
+        )
+    }
+}
+
 fun getRoomDatabase(ctx: AppContext): Database {
     return getDatabaseBuilder(ctx)
-        .addMigrations(MIGRATION_39_40)
+        .addMigrations(MIGRATION_39_40, MIGRATION_43_44, MIGRATION_44_45)
         .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
         // V7 required a full re-create.
         .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2, 3, 4, 5, 6, 7, 8, 9)

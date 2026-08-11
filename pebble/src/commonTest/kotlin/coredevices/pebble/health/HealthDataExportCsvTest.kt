@@ -1,6 +1,7 @@
 package coredevices.pebble.health
 
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
+import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import kotlin.test.Test
@@ -53,6 +54,26 @@ class HealthDataExportCsvTest {
 
         assertContains(HealthDataExportCsv.GRANULAR_HEART_RATE_HEADER, "sensor_quality")
         assertContains(row, ",132,132,1,3,")
+    }
+
+    @Test
+    fun ppiRowsPreserveIntervalQualityAndStableIdentity() {
+        val row = HealthDataExportCsv.beatToBeatRow(
+            BeatToBeatEntity(
+                recordId = "builtin-workout-ppi-v1:1700000000:8",
+                workoutId = 1_700_000_000,
+                sequence = 8,
+                timestampEpochSeconds = 1_700_000_007,
+                intervalMs = 888,
+                quality = 3,
+                flags = 1,
+                receivedAtEpochSeconds = 1_700_000_100,
+            ),
+        )
+
+        assertContains(HealthDataExportCsv.BEAT_TO_BEAT_HEADER, "interval_ms,sensor_quality")
+        assertContains(row, ",1700000000,8,888,3,1,")
+        assertContains(row, "builtin-workout-ppi-v1:1700000000:8,builtin_workout_ppi")
     }
 
     @Test

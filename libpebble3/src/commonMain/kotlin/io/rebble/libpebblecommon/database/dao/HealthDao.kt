@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
+import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,20 @@ interface HealthDao {
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertGranularHeartRate(data: List<GranularHeartRateEntity>): List<Long>
+
+    /** Raw accepted PPI values stay locally available; Apple Health never receives them directly. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertBeatToBeat(data: List<BeatToBeatEntity>): List<Long>
+
+    @Query("""
+        SELECT * FROM beat_to_beat
+        WHERE timestampEpochSeconds >= :start AND timestampEpochSeconds < :end
+        ORDER BY timestampEpochSeconds ASC, sequence ASC, recordId ASC
+        """)
+    suspend fun getBeatToBeatForRange(start: Long, end: Long): List<BeatToBeatEntity>
+
+    @Query("SELECT COUNT(*) FROM beat_to_beat WHERE intervalMs > 0")
+    suspend fun countBeatToBeat(): Int
 
     @Query("""
         SELECT * FROM granular_heart_rate
