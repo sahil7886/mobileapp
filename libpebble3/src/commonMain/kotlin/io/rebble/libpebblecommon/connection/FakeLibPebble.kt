@@ -28,6 +28,7 @@ import io.rebble.libpebblecommon.database.entity.ChannelItem
 import io.rebble.libpebblecommon.database.entity.HRMonitoringInterval
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
+import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.HealthGender
 import io.rebble.libpebblecommon.database.entity.MuteState
 import io.rebble.libpebblecommon.database.entity.NotificationAppItem
@@ -481,6 +482,13 @@ class FakeLibPebble : LibPebble {
     override suspend fun markGranularHeartRateExported(recordIds: List<String>): Int = recordIds.size
 
     override suspend fun countPendingGranularHeartRate(): Int = 0
+
+    override suspend fun getBeatToBeatForRange(
+        start: Long,
+        end: Long,
+    ): List<BeatToBeatEntity> = emptyList()
+
+    override suspend fun countBeatToBeat(): Int = 0
 
     override suspend fun getOverlayEntriesAfter(
         afterTimestamp: Long,

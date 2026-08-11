@@ -108,6 +108,7 @@ import io.rebble.libpebblecommon.database.entity.TimelineNotificationDao
 import io.rebble.libpebblecommon.database.getRoomDatabase
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateDataProcessor
 import io.rebble.libpebblecommon.datalogging.Datalogging
+import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutPpiDataProcessor
 import io.rebble.libpebblecommon.datalogging.HealthCaptureDataProcessor
 import io.rebble.libpebblecommon.datalogging.HealthDataProcessor
 import io.rebble.libpebblecommon.health.Health
@@ -361,6 +362,7 @@ fun initKoin(
                 singleOf(::HealthDataProcessor)
                 singleOf(::HealthCaptureDataProcessor)
                 singleOf(::BuiltinWorkoutHeartRateDataProcessor)
+                singleOf(::BuiltinWorkoutPpiDataProcessor)
                 single { get<Database>().watchPrefDao() }
                 single { get<Database>().weatherAppDao() }
                 single { get<Database>().appPrefsDao() }

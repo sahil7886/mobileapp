@@ -26,6 +26,7 @@ import io.rebble.libpebblecommon.database.dao.ContactWithCount
 import io.rebble.libpebblecommon.database.dao.DailyMovementAggregate
 import io.rebble.libpebblecommon.database.dao.HealthAggregates
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
+import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.dao.TimelineNotificationRealDao
 import io.rebble.libpebblecommon.database.dao.VibePatternDao
 import io.rebble.libpebblecommon.database.dao.WatchPreference
@@ -165,6 +166,12 @@ interface HealthDataApi {
     suspend fun markGranularHeartRateExported(recordIds: List<String>): Int
 
     suspend fun countPendingGranularHeartRate(): Int
+
+    /** Every accepted PPI/RR interval received from the Time 2 in the given half-open range. */
+    suspend fun getBeatToBeatForRange(start: Long, end: Long): List<BeatToBeatEntity>
+
+    /** Number of raw accepted PPI/RR intervals retained locally. */
+    suspend fun countBeatToBeat(): Int
 
     /** Returns minute-level health data for the given epoch-second range. */
     suspend fun getHealthDataForRange(start: Long, end: Long): List<HealthDataEntity>

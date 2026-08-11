@@ -7,6 +7,7 @@ import com.oldguy.common.io.ZipEntry
 import com.oldguy.common.io.ZipFile
 import io.rebble.libpebblecommon.connection.AppContext
 import io.rebble.libpebblecommon.connection.LibPebble
+import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
@@ -48,6 +49,7 @@ data class HealthDataExport(
     val endEpochSeconds: Long,
     val minuteHealthRecords: Int,
     val granularHeartRateRecords: Int,
+    val beatToBeatRecords: Int,
     val overlayRecords: Int,
 )
 
@@ -56,8 +58,8 @@ data class HealthDataExport(
  * small text blocks; the archive never builds one giant CSV string in memory.
  *
  * The local database intentionally stores only data received from Pebble.  It therefore does not
- * export a second copy of Apple Health data, and it does not invent beat-to-beat intervals where
- * the current watch worker did not collect PPI/IBI values.
+ * export a second copy of Apple Health data. PPI values are emitted only when the Time 2 firmware
+ * has supplied accepted intervals; the exporter never derives them from BPM.
  */
 class HealthDataExporter(
     private val libPebble: LibPebble,
@@ -76,6 +78,7 @@ class HealthDataExporter(
                 // included even though the Apple Health writer quite correctly excludes them.
                 val minuteHealth = libPebble.getHealthDataForRange(startEpochSeconds, endEpochSeconds)
                 val granularHeartRate = libPebble.getGranularHeartRateForRange(startEpochSeconds, endEpochSeconds)
+                val beatToBeat = libPebble.getBeatToBeatForRange(startEpochSeconds, endEpochSeconds)
                 val overlays = libPebble.getOverlayEntriesForRange(startEpochSeconds, endEpochSeconds)
 
                 val fileName = "pebble-health-${clock.now().toEpochMilliseconds()}-${period.fileToken}.zip"
@@ -84,7 +87,7 @@ class HealthDataExporter(
                 logger.i {
                     "HEALTH_DATA_EXPORT creating period=${period.fileToken} start=$startEpochSeconds " +
                         "end=$endEpochSeconds minute=${minuteHealth.size} granular=${granularHeartRate.size} " +
-                        "overlays=${overlays.size}"
+                        "ppi=${beatToBeat.size} overlays=${overlays.size}"
                 }
 
                 ZipFile(File(destination.toString()), mode = FileMode.Write).use { zip ->
@@ -106,11 +109,11 @@ class HealthDataExporter(
                         rows = overlays.iterator(),
                         formatter = HealthDataExportCsv::overlayRow,
                     )
-                    // Kept as a stable, machine-readable place for future PPI/IBI collection. A
-                    // header-only file is deliberately more honest than filling it with raw BPM.
-                    zip.addSingleTextEntry(
-                        BEAT_TO_BEAT_FILE,
-                        HealthDataExportCsv.BEAT_TO_BEAT_HEADER + "\n",
+                    zip.addCsvEntry(
+                        name = BEAT_TO_BEAT_FILE,
+                        header = HealthDataExportCsv.BEAT_TO_BEAT_HEADER,
+                        rows = beatToBeat.iterator(),
+                        formatter = HealthDataExportCsv::beatToBeatRow,
                     )
                     zip.addSingleTextEntry(
                         MANIFEST_FILE,
@@ -120,6 +123,7 @@ class HealthDataExporter(
                             endEpochSeconds = endEpochSeconds,
                             minuteHealthRecords = minuteHealth.size,
                             granularHeartRateRecords = granularHeartRate.size,
+                            beatToBeatRecords = beatToBeat.size,
                             overlayRecords = overlays.size,
                         ),
                     )
@@ -142,6 +146,7 @@ class HealthDataExporter(
                     endEpochSeconds = endEpochSeconds,
                     minuteHealthRecords = minuteHealth.size,
                     granularHeartRateRecords = granularHeartRate.size,
+                    beatToBeatRecords = beatToBeat.size,
                     overlayRecords = overlays.size,
                 )
             } catch (error: Throwable) {
@@ -208,7 +213,9 @@ internal object HealthDataExportCsv {
     const val OVERLAYS_HEADER =
         "start_utc,start_epoch_seconds,end_utc,end_epoch_seconds,duration_seconds,type,type_name," +
             "offset_utc_seconds,steps,resting_kilocalories,active_kilocalories,distance_cm"
-    const val BEAT_TO_BEAT_HEADER = "timestamp_utc,epoch_seconds,interval_ms,source,availability_note"
+    const val BEAT_TO_BEAT_HEADER =
+        "timestamp_utc,epoch_seconds,workout_id,sequence,interval_ms,sensor_quality,flags," +
+            "received_at_utc,received_at_epoch_seconds,record_id,source"
 
     fun minuteHealthRow(row: HealthDataEntity): String = csvRow(
         timestamp(row.timestamp), row.timestamp, row.steps, row.orientation, row.intensity,
@@ -221,6 +228,12 @@ internal object HealthDataExportCsv {
         row.filteredBpm, row.rawBpm, row.flags and 0xff,
         BuiltinWorkoutHeartRateProtocol.sensorQuality(row) ?: "", timestamp(row.receivedAtEpochSeconds),
         row.receivedAtEpochSeconds, row.exportedToAppleHealth, row.recordId,
+    )
+
+    fun beatToBeatRow(row: BeatToBeatEntity): String = csvRow(
+        timestamp(row.timestampEpochSeconds), row.timestampEpochSeconds, row.workoutId, row.sequence,
+        row.intervalMs, row.quality, row.flags, timestamp(row.receivedAtEpochSeconds),
+        row.receivedAtEpochSeconds, row.recordId, "builtin_workout_ppi",
     )
 
     fun overlayRow(row: OverlayDataEntity): String {
@@ -238,6 +251,7 @@ internal object HealthDataExportCsv {
         endEpochSeconds: Long,
         minuteHealthRecords: Int,
         granularHeartRateRecords: Int,
+        beatToBeatRecords: Int,
         overlayRecords: Int,
     ): String = """
         {
@@ -248,8 +262,8 @@ internal object HealthDataExportCsv {
           "minute_health_records": $minuteHealthRecords,
           "workout_heart_rate_records": $granularHeartRateRecords,
           "sleep_and_activity_records": $overlayRecords,
-          "beat_to_beat_records": 0,
-          "beat_to_beat_status": "not_collected_by_current_pipeline"
+          "beat_to_beat_records": $beatToBeatRecords,
+          "beat_to_beat_status": "accepted_ppi_from_builtin_workout"
         }
     """.trimIndent() + "\n"
 
@@ -286,9 +300,10 @@ internal object HealthDataExportCsv {
           selected range when it continues into it (for example, an overnight sleep session).
 
         beat_to_beat.csv
-          This file is deliberately header-only. The current pipelines do not collect PPI/IBI/RR
-          (beat-to-beat) intervals, so there are no such values to export. Raw BPM must not be
-          interpreted as beat-to-beat data or used as an HRV calculation input.
+          Every accepted PPI/RR interval received from the Time 2 during a built-in Workout. The
+          interval is in milliseconds and preserves the watch timestamp, stable sequence, and
+          sensor quality. It is wrist-PPG algorithm output, not ECG data, and a raw PPI value is
+          not itself an Apple Health SDNN result.
 
         manifest.json
           Machine-readable export range, record counts, and beat-to-beat availability.

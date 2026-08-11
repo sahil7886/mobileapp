@@ -169,12 +169,14 @@ class PlatformHealthSync(
         val pendingMinuteRecords = healthDataApi.getHealthDataAfter(tracker.lastSyncedHeartRateTimestamp)
             .count { it.heartRate in 1..300 }
         val pendingGranularRecords = healthDataApi.countPendingGranularHeartRate()
+        val storedBeatToBeatRecords = healthDataApi.countBeatToBeat()
         tracker.updateExportStatus(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
             workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
             pendingHeartRateRecords = pendingMinuteRecords,
             pendingGranularHeartRateRecords = pendingGranularRecords,
+            storedBeatToBeatRecords = storedBeatToBeatRecords,
         )
     }
 

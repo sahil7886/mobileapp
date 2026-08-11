@@ -36,10 +36,16 @@
   persistent sequence IDs, sensor-quality diagnostics, and an exact terminal timestamp. The phone
   pairs it with the existing ActivitySession and creates one native Apple Health workout with its
   BPM samples attached. Build/flash and physical iPhone validation remain outstanding.
+- [~] Add Time 2 built-in Workout PPI/RR capture: the firmware requests the optional HRV feature
+  only while a manual Workout is active, buffers every accepted PPI with quality and stable IDs,
+  and the phone stores/deduplicates it before DataLogging ACK. The ZIP export now includes raw
+  `beat_to_beat.csv` rows. Firmware builds pass; physical transfer, battery, and interval-quality
+  validation remain outstanding.
 - [x] Add an on-device, shareable ZIP export for rolling 7-day, 30-day, and six-month windows.
   It contains separate CSVs for all locally persisted minute health, received workout HR (filtered
   and raw diagnostic BPM), and sleep/activity overlays, plus a manifest and field documentation.
-  It transparently includes a header-only beat-to-beat CSV because PPI/IBI/RR is not collected yet.
+  It includes a raw beat-to-beat CSV when the HRV-enabled built-in Workout stream has collected
+  accepted PPI/RR values.
 
 ## Partial / requires physical validation
 
@@ -62,9 +68,9 @@
 - [ ] Production workout HR cadence: the worker can request 1/5/15 seconds, but the SDK treats
   the value as a battery- and quality-dependent suggestion. Determine a Time 2 battery budget and
   observed timestamp spacing before choosing a default.
-- [ ] Overnight HRV: current PebbleOS source contains an opt-in PPI (peak-to-peak interval) API,
-  but the worker does not yet collect it. Verify Time 2 firmware support, interval quality, and a
-  valid SDNN algorithm before writing `HKQuantityTypeIdentifierHeartRateVariabilitySDNN`.
+- [ ] Overnight HRV: PPI is now captured only during a manually started built-in Workout. Add a
+  low-power sleep-specific capture policy, validate interval quality, and validate a SDNN
+  algorithm before writing `HKQuantityTypeIdentifierHeartRateVariabilitySDNN`.
 - [ ] Bevel HRV: Apple Health requires HRV as SDNN milliseconds. Direct overnight SDNN export and
   Bevel display remain unverified; do not claim either until tested in Apple Health and Bevel.
 - [ ] Bevel heart-rate display: Apple Health acceptance is implemented, but appearance in Bevel is

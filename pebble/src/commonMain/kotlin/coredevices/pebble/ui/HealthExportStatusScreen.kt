@@ -58,6 +58,12 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
                 "connection, then written to Apple Health with replay-safe identifiers.",
             style = MaterialTheme.typography.bodyMedium,
         )
+        Text(
+            "Raw PPI/RR intervals are retained locally for export. They are not written directly " +
+                "to Apple Health because HealthKit HRV expects an SDNN aggregate, not intervals.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         HorizontalDivider()
         HealthExportStatusRows(status)
         status.lastError?.let { error ->
@@ -92,6 +98,7 @@ private fun HealthExportStatusRows(status: HealthExportStatus) {
     StatusRow("Last successful sync", status.lastSuccessfulSyncEpochSeconds.toDisplayTime())
     StatusRow("Pending heart-rate records", status.pendingHeartRateRecords.toString())
     StatusRow("Pending workout HR records", status.pendingGranularHeartRateRecords.toString())
+    StatusRow("Raw PPI records on phone", status.storedBeatToBeatRecords.toString())
     StatusRow("Failed heart-rate records", status.failedHeartRateRecords.toString())
     StatusRow("Data-source conflicts", status.dataSourceConflicts)
 }
