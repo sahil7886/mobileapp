@@ -15,6 +15,7 @@ data class HealthExportStatus(
     val pendingHeartRateRecords: Int,
     val pendingGranularHeartRateRecords: Int,
     val storedBeatToBeatRecords: Int,
+    val storedSleepCaptureRecords: Int,
     val failedHeartRateRecords: Int,
     val lastError: String?,
     /**
@@ -80,6 +81,7 @@ class HealthSyncTracker(private val settings: Settings) {
         pendingHeartRateRecords: Int = _status.value.pendingHeartRateRecords,
         pendingGranularHeartRateRecords: Int = _status.value.pendingGranularHeartRateRecords,
         storedBeatToBeatRecords: Int = _status.value.storedBeatToBeatRecords,
+        storedSleepCaptureRecords: Int = _status.value.storedSleepCaptureRecords,
     ) {
         _status.value = snapshot(
             healthPlatformAvailable = healthPlatformAvailable,
@@ -88,6 +90,7 @@ class HealthSyncTracker(private val settings: Settings) {
             pendingHeartRateRecords = pendingHeartRateRecords,
             pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
             storedBeatToBeatRecords = storedBeatToBeatRecords,
+            storedSleepCaptureRecords = storedSleepCaptureRecords,
         )
     }
 
@@ -113,6 +116,7 @@ class HealthSyncTracker(private val settings: Settings) {
             pendingHeartRateRecords = _status.value.pendingHeartRateRecords,
             pendingGranularHeartRateRecords = _status.value.pendingGranularHeartRateRecords,
             storedBeatToBeatRecords = _status.value.storedBeatToBeatRecords,
+            storedSleepCaptureRecords = _status.value.storedSleepCaptureRecords,
         )
     }
 
@@ -123,6 +127,7 @@ class HealthSyncTracker(private val settings: Settings) {
         pendingHeartRateRecords: Int = 0,
         pendingGranularHeartRateRecords: Int = 0,
         storedBeatToBeatRecords: Int = 0,
+        storedSleepCaptureRecords: Int = 0,
     ): HealthExportStatus = HealthExportStatus(
         healthPlatformAvailable = healthPlatformAvailable,
         heartRateAuthorization = heartRateAuthorization,
@@ -131,6 +136,7 @@ class HealthSyncTracker(private val settings: Settings) {
         pendingHeartRateRecords = pendingHeartRateRecords,
         pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
         storedBeatToBeatRecords = storedBeatToBeatRecords,
+        storedSleepCaptureRecords = storedSleepCaptureRecords,
         failedHeartRateRecords = settings.getInt(KEY_FAILED_HEART_RATE_RECORDS, 0),
         lastError = settings.getStringOrNull(KEY_LAST_ERROR),
     )

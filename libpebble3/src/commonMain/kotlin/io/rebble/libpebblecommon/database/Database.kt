@@ -36,6 +36,7 @@ import io.rebble.libpebblecommon.database.entity.CalendarEntity
 import io.rebble.libpebblecommon.database.entity.ContactEntity
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.database.entity.HealthSettingsEntryEntity
 import io.rebble.libpebblecommon.database.entity.HealthSettingsEntrySyncEntity
 import io.rebble.libpebblecommon.database.entity.HealthStatDao
@@ -89,6 +90,7 @@ internal const val DATABASE_FILENAME = "libpebble3.db"
         HealthDataEntity::class,
         GranularHeartRateEntity::class,
         BeatToBeatEntity::class,
+        SleepCaptureSampleEntity::class,
         OverlayDataEntity::class,
         HealthStatEntity::class,
         HealthStatSyncEntity::class,
@@ -100,7 +102,7 @@ internal const val DATABASE_FILENAME = "libpebble3.db"
         AppPrefsEntrySyncEntity::class,
         NotificationRuleEntity::class,
     ],
-    version = 45,
+    version = 46,
     autoMigrations = [
         AutoMigration(from = 10, to = 11),
         AutoMigration(from = 11, to = 12),
@@ -240,9 +242,43 @@ val MIGRATION_44_45 = object : Migration(44, 45) {
     }
 }
 
+/** Adds raw overnight classifier inputs without changing historical health or workout tables. */
+val MIGRATION_45_46 = object : Migration(45, 46) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `sleep_capture_sample` (
+              `recordId` TEXT NOT NULL,
+              `sessionId` INTEGER NOT NULL,
+              `sequence` INTEGER NOT NULL,
+              `timestampEpochSeconds` INTEGER NOT NULL,
+              `value` INTEGER NOT NULL,
+              `quality` INTEGER NOT NULL,
+              `sampleType` INTEGER NOT NULL,
+              `flags` INTEGER NOT NULL,
+              `receivedAtEpochSeconds` INTEGER NOT NULL,
+              PRIMARY KEY(`recordId`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_sleep_capture_sample_timestampEpochSeconds` " +
+                "ON `sleep_capture_sample` (`timestampEpochSeconds`)",
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_sleep_capture_sample_sessionId_sequence` " +
+                "ON `sleep_capture_sample` (`sessionId`, `sequence`)",
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_sleep_capture_sample_sampleType` " +
+                "ON `sleep_capture_sample` (`sampleType`)",
+        )
+    }
+}
+
 fun getRoomDatabase(ctx: AppContext): Database {
     return getDatabaseBuilder(ctx)
-        .addMigrations(MIGRATION_39_40, MIGRATION_43_44, MIGRATION_44_45)
+        .addMigrations(MIGRATION_39_40, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46)
         .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
         // V7 required a full re-create.
         .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2, 3, 4, 5, 6, 7, 8, 9)

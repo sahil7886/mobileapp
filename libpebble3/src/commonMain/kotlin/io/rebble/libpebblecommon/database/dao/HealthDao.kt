@@ -8,6 +8,7 @@ import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -28,6 +29,20 @@ interface HealthDao {
     /** Raw accepted PPI values stay locally available; Apple Health never receives them directly. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertBeatToBeat(data: List<BeatToBeatEntity>): List<Long>
+
+    /** Replay-safe raw overnight PPI/BPM/motion inputs for the future sleep classifier. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSleepCaptureSamples(data: List<SleepCaptureSampleEntity>): List<Long>
+
+    @Query("""
+        SELECT * FROM sleep_capture_sample
+        WHERE timestampEpochSeconds >= :start AND timestampEpochSeconds < :end
+        ORDER BY timestampEpochSeconds ASC, sessionId ASC, sequence ASC, recordId ASC
+        """)
+    suspend fun getSleepCaptureSamplesForRange(start: Long, end: Long): List<SleepCaptureSampleEntity>
+
+    @Query("SELECT COUNT(*) FROM sleep_capture_sample")
+    suspend fun countSleepCaptureSamples(): Int
 
     @Query("""
         SELECT * FROM beat_to_beat

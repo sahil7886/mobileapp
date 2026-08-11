@@ -10,6 +10,7 @@ import io.rebble.libpebblecommon.database.dao.HealthDao
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.database.entity.HRMonitoringInterval
 import io.rebble.libpebblecommon.database.entity.HealthGender
 import io.rebble.libpebblecommon.database.entity.HealthSettingsEntryDao
@@ -204,6 +205,13 @@ class Health(
     ): List<BeatToBeatEntity> = healthDao.getBeatToBeatForRange(start, end)
 
     override suspend fun countBeatToBeat(): Int = healthDao.countBeatToBeat()
+
+    override suspend fun getSleepCaptureSamplesForRange(
+        start: Long,
+        end: Long,
+    ): List<SleepCaptureSampleEntity> = healthDao.getSleepCaptureSamplesForRange(start, end)
+
+    override suspend fun countSleepCaptureSamples(): Int = healthDao.countSleepCaptureSamples()
 
     override suspend fun getOverlayEntriesAfter(
         afterTimestamp: Long,

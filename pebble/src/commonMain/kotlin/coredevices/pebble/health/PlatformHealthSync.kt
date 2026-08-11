@@ -156,6 +156,7 @@ class PlatformHealthSync(
             syncHeartRate()
             syncGranularWorkoutHeartRate()
             syncOverlays()
+            refreshExportStatus()
             logger.d { "Health platform sync completed" }
         } catch (e: Exception) {
             logger.e(e) { "Health platform sync failed" }
@@ -170,6 +171,7 @@ class PlatformHealthSync(
             .count { it.heartRate in 1..300 }
         val pendingGranularRecords = healthDataApi.countPendingGranularHeartRate()
         val storedBeatToBeatRecords = healthDataApi.countBeatToBeat()
+        val storedSleepCaptureRecords = healthDataApi.countSleepCaptureSamples()
         tracker.updateExportStatus(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
@@ -177,6 +179,7 @@ class PlatformHealthSync(
             pendingHeartRateRecords = pendingMinuteRecords,
             pendingGranularHeartRateRecords = pendingGranularRecords,
             storedBeatToBeatRecords = storedBeatToBeatRecords,
+            storedSleepCaptureRecords = storedSleepCaptureRecords,
         )
     }
 

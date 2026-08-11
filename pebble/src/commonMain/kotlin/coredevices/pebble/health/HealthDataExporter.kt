@@ -11,6 +11,7 @@ import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import io.rebble.libpebblecommon.health.OverlayType
 import io.rebble.libpebblecommon.util.getTempFilePath
@@ -50,6 +51,7 @@ data class HealthDataExport(
     val minuteHealthRecords: Int,
     val granularHeartRateRecords: Int,
     val beatToBeatRecords: Int,
+    val sleepCaptureRecords: Int,
     val overlayRecords: Int,
 )
 
@@ -79,6 +81,7 @@ class HealthDataExporter(
                 val minuteHealth = libPebble.getHealthDataForRange(startEpochSeconds, endEpochSeconds)
                 val granularHeartRate = libPebble.getGranularHeartRateForRange(startEpochSeconds, endEpochSeconds)
                 val beatToBeat = libPebble.getBeatToBeatForRange(startEpochSeconds, endEpochSeconds)
+                val sleepCapture = libPebble.getSleepCaptureSamplesForRange(startEpochSeconds, endEpochSeconds)
                 val overlays = libPebble.getOverlayEntriesForRange(startEpochSeconds, endEpochSeconds)
 
                 val fileName = "pebble-health-${clock.now().toEpochMilliseconds()}-${period.fileToken}.zip"
@@ -87,7 +90,7 @@ class HealthDataExporter(
                 logger.i {
                     "HEALTH_DATA_EXPORT creating period=${period.fileToken} start=$startEpochSeconds " +
                         "end=$endEpochSeconds minute=${minuteHealth.size} granular=${granularHeartRate.size} " +
-                        "ppi=${beatToBeat.size} overlays=${overlays.size}"
+                        "ppi=${beatToBeat.size} sleepCapture=${sleepCapture.size} overlays=${overlays.size}"
                 }
 
                 ZipFile(File(destination.toString()), mode = FileMode.Write).use { zip ->
@@ -115,6 +118,12 @@ class HealthDataExporter(
                         rows = beatToBeat.iterator(),
                         formatter = HealthDataExportCsv::beatToBeatRow,
                     )
+                    zip.addCsvEntry(
+                        name = SLEEP_CAPTURE_FILE,
+                        header = HealthDataExportCsv.SLEEP_CAPTURE_HEADER,
+                        rows = sleepCapture.iterator(),
+                        formatter = HealthDataExportCsv::sleepCaptureRow,
+                    )
                     zip.addSingleTextEntry(
                         MANIFEST_FILE,
                         HealthDataExportCsv.manifest(
@@ -124,6 +133,7 @@ class HealthDataExporter(
                             minuteHealthRecords = minuteHealth.size,
                             granularHeartRateRecords = granularHeartRate.size,
                             beatToBeatRecords = beatToBeat.size,
+                            sleepCaptureRecords = sleepCapture.size,
                             overlayRecords = overlays.size,
                         ),
                     )
@@ -147,6 +157,7 @@ class HealthDataExporter(
                     minuteHealthRecords = minuteHealth.size,
                     granularHeartRateRecords = granularHeartRate.size,
                     beatToBeatRecords = beatToBeat.size,
+                    sleepCaptureRecords = sleepCapture.size,
                     overlayRecords = overlays.size,
                 )
             } catch (error: Throwable) {
@@ -196,6 +207,7 @@ class HealthDataExporter(
         const val GRANULAR_HEART_RATE_FILE = "workout_heart_rate.csv"
         const val OVERLAYS_FILE = "sleep_and_activity.csv"
         const val BEAT_TO_BEAT_FILE = "beat_to_beat.csv"
+        const val SLEEP_CAPTURE_FILE = "sleep_capture.csv"
         const val MANIFEST_FILE = "manifest.json"
         const val README_FILE = "README.txt"
     }
@@ -215,6 +227,9 @@ internal object HealthDataExportCsv {
             "offset_utc_seconds,steps,resting_kilocalories,active_kilocalories,distance_cm"
     const val BEAT_TO_BEAT_HEADER =
         "timestamp_utc,epoch_seconds,workout_id,sequence,interval_ms,sensor_quality,flags," +
+            "received_at_utc,received_at_epoch_seconds,record_id,source"
+    const val SLEEP_CAPTURE_HEADER =
+        "timestamp_utc,epoch_seconds,capture_session_id,sequence,sample_type,value,quality,flags," +
             "received_at_utc,received_at_epoch_seconds,record_id,source"
 
     fun minuteHealthRow(row: HealthDataEntity): String = csvRow(
@@ -236,6 +251,13 @@ internal object HealthDataExportCsv {
         row.receivedAtEpochSeconds, row.recordId, "builtin_workout_ppi",
     )
 
+    fun sleepCaptureRow(row: SleepCaptureSampleEntity): String = csvRow(
+        timestamp(row.timestampEpochSeconds), row.timestampEpochSeconds, row.sessionId, row.sequence,
+        sleepCaptureTypeName(row.sampleType), row.value, row.quality, row.flags,
+        timestamp(row.receivedAtEpochSeconds), row.receivedAtEpochSeconds, row.recordId,
+        "system_activity_sleep_capture",
+    )
+
     fun overlayRow(row: OverlayDataEntity): String {
         val end = row.startTime + row.duration
         return csvRow(
@@ -252,6 +274,7 @@ internal object HealthDataExportCsv {
         minuteHealthRecords: Int,
         granularHeartRateRecords: Int,
         beatToBeatRecords: Int,
+        sleepCaptureRecords: Int,
         overlayRecords: Int,
     ): String = """
         {
@@ -263,7 +286,9 @@ internal object HealthDataExportCsv {
           "workout_heart_rate_records": $granularHeartRateRecords,
           "sleep_and_activity_records": $overlayRecords,
           "beat_to_beat_records": $beatToBeatRecords,
-          "beat_to_beat_status": "accepted_ppi_from_builtin_workout"
+          "beat_to_beat_status": "accepted_ppi_from_builtin_workout",
+          "sleep_capture_records": $sleepCaptureRecords,
+          "sleep_capture_status": "raw_ppi_bpm_quality_and_30_second_motion_inputs"
         }
     """.trimIndent() + "\n"
 
@@ -305,6 +330,13 @@ internal object HealthDataExportCsv {
           sensor quality. It is wrist-PPG algorithm output, not ECG data, and a raw PPI value is
           not itself an Apple Health SDNN result.
 
+        sleep_capture.csv
+          Raw overnight classifier inputs from the system Activity service: accepted wrist-PPG PPI,
+          BPM/quality snapshots every 30 seconds, 30-second motion-energy summaries, and session completion/drop
+          diagnostics. PPI timestamps are watch receipt seconds, not invented millisecond beats.
+          This file is local raw data; it does not assert sleep stages or write PPI directly to
+          Apple Health.
+
         manifest.json
           Machine-readable export range, record counts, and beat-to-beat availability.
 
@@ -324,4 +356,12 @@ internal object HealthDataExportCsv {
     }
 
     private fun timestamp(epochSeconds: Long): String = Instant.fromEpochSeconds(epochSeconds).toString()
+
+    private fun sleepCaptureTypeName(type: Int): String = when (type) {
+        1 -> "ppi"
+        2 -> "bpm"
+        3 -> "motion_epoch"
+        4 -> "session"
+        else -> "unknown($type)"
+    }
 }

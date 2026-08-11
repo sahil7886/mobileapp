@@ -29,6 +29,7 @@ import io.rebble.libpebblecommon.database.entity.HRMonitoringInterval
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.database.entity.HealthGender
 import io.rebble.libpebblecommon.database.entity.MuteState
 import io.rebble.libpebblecommon.database.entity.NotificationAppItem
@@ -489,6 +490,13 @@ class FakeLibPebble : LibPebble {
     ): List<BeatToBeatEntity> = emptyList()
 
     override suspend fun countBeatToBeat(): Int = 0
+
+    override suspend fun getSleepCaptureSamplesForRange(
+        start: Long,
+        end: Long,
+    ): List<SleepCaptureSampleEntity> = emptyList()
+
+    override suspend fun countSleepCaptureSamples(): Int = 0
 
     override suspend fun getOverlayEntriesAfter(
         afterTimestamp: Long,

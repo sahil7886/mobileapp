@@ -59,7 +59,7 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            "Raw PPI/RR intervals are retained locally for export. They are not written directly " +
+            "Raw PPI intervals are retained locally for export. They are not written directly " +
                 "to Apple Health because HealthKit HRV expects an SDNN aggregate, not intervals.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -99,6 +99,7 @@ private fun HealthExportStatusRows(status: HealthExportStatus) {
     StatusRow("Pending heart-rate records", status.pendingHeartRateRecords.toString())
     StatusRow("Pending workout HR records", status.pendingGranularHeartRateRecords.toString())
     StatusRow("Raw PPI records on phone", status.storedBeatToBeatRecords.toString())
+    StatusRow("Overnight classifier inputs", status.storedSleepCaptureRecords.toString())
     StatusRow("Failed heart-rate records", status.failedHeartRateRecords.toString())
     StatusRow("Data-source conflicts", status.dataSourceConflicts)
 }

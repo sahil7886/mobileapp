@@ -27,6 +27,7 @@ import io.rebble.libpebblecommon.database.dao.DailyMovementAggregate
 import io.rebble.libpebblecommon.database.dao.HealthAggregates
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.database.dao.TimelineNotificationRealDao
 import io.rebble.libpebblecommon.database.dao.VibePatternDao
 import io.rebble.libpebblecommon.database.dao.WatchPreference
@@ -172,6 +173,12 @@ interface HealthDataApi {
 
     /** Number of raw accepted PPI/RR intervals retained locally. */
     suspend fun countBeatToBeat(): Int
+
+    /** Raw PPI, BPM/quality and 30-second motion inputs from overnight system capture. */
+    suspend fun getSleepCaptureSamplesForRange(start: Long, end: Long): List<SleepCaptureSampleEntity>
+
+    /** Number of raw overnight classifier-input records retained locally. */
+    suspend fun countSleepCaptureSamples(): Int
 
     /** Returns minute-level health data for the given epoch-second range. */
     suspend fun getHealthDataForRange(start: Long, end: Long): List<HealthDataEntity>

@@ -30,6 +30,21 @@ more than one interval can arrive in a UTC second; its zero-interval terminal re
 commit marker, not a heartbeat. The phone stores it idempotently in `beat_to_beat` and never
 fabricates PPI from BPM.
 
+The system Activity service now also captures an overnight classifier-input stream. Between **21:00
+and 12:00 local time**, it activates only while the existing Pebble motion-derived sleep state is
+active and the existing heart-rate setting is enabled. It requests the HRM manager's continuous
+PPI path; the hardware still decides which readings it can accept. Every accepted API-visible PPI
+is retained with its reported quality, while BPM/quality is recorded once per 30 seconds to keep a
+full phone-disconnected night within the watch's shared DataLogging storage. The Activity service
+already owns a 25 Hz accelerometer subscription, so the capture adds no second motion subscription:
+it writes a compact movement-energy summary for each 30-second epoch. All four record kinds
+(session, PPI, BPM, motion) use one compact 14-byte, versioned DataLogging format with session IDs,
+sequence IDs, completion records, and an explicit dropped-record count.
+
+The existing Pebble motion-derived sleep/deep-sleep overlays are intentionally retained. The new
+stream is raw classifier input and does not yet replace those labels or create new Apple Health
+sleep-stage/HRV samples.
+
 `watchapps/health-capture` remains a separate prototype and diagnostic tool. It is not required for
 the built-in Workout path and does not create the normal Pebble activity session.
 
@@ -66,6 +81,7 @@ window. The ZIP is deliberately split into small, interoperable CSVs instead of 
 | `workout_heart_rate.csv` | Every received Health Capture or built-in Workout record, including BPM, flags, built-in sensor quality where available, UTC times, persistent workout/sequence IDs, and Apple Health export state. A built-in terminal row has `filtered_bpm=0` and records the precise workout end. |
 | `sleep_and_activity.csv` | Every persisted overlay interval overlapping the range: sleep, deep sleep, naps, walking, running, and open workouts. |
 | `beat_to_beat.csv` | Every accepted PPI/RR interval received from the built-in Workout, including Workout/sequence ID, timestamp, milliseconds, sensor quality, flags, and receipt time. A final zero-interval row is the exact Workout-stop commit marker. |
+| `sleep_capture.csv` | Overnight system Activity capture records: PPI, BPM and quality, 30-second movement energy, and session/drop diagnostics. PPI timestamps have the watch API's second precision; the file does not claim millisecond beat timestamps or sleep stages. |
 | `manifest.json` / `README.txt` | Record counts, exact UTC bounds, field definitions, and availability caveats. |
 
 The archive represents data that the phone received from Pebble and stored locally. It is not an
@@ -115,10 +131,28 @@ counts, and watch temperature before calling one-second sampling production-safe
 
 Apple Health's HRV type is SDNN in milliseconds. The Time 2 PPI stream is **not** written to Apple
 Health directly: raw PPI is an input series, while HealthKit accepts an SDNN aggregate. This slice
-captures raw PPI only during manually started built-in Workouts, not sleep, and therefore must not
-be called overnight HRV. First validate an overnight, quality-controlled collection policy and a
+now captures raw PPI during the existing motion-derived sleep interval, but it must not yet be
+called overnight HRV. First validate an overnight, quality-controlled collection policy and a
 documented SDNN algorithm. Do not write RMSSD values into the SDNN type or claim Bevel
 compatibility until a physical Apple Health + Bevel test passes.
+
+### Overnight capture test for tonight
+
+1. Before bed, charge the Time 2 to a recorded percentage and ensure **Settings → Health → Heart
+   Rate** remains enabled. Do not start Health Capture or a Workout; this is the normal background
+   sleep path.
+2. Wear the watch normally through the night. Capture begins after the existing Pebble
+   motion-derived sleep detector enters light or restful sleep, and ends when it returns awake
+   (within the 21:00–12:00 local window). This keeps the full detected sleep interval in the
+   watch's shared local log while the phone is unavailable.
+3. Record the battery percentage immediately before sleep and after waking. Keep the companion
+   disconnected for part of the night if desired; the watch must retain data locally either way.
+4. After noon, reconnect the iPhone fork. In **Health → Apple Health export status**, refresh the
+   status and note **Overnight classifier inputs**. Then use the 7-day ZIP export and inspect
+   `sleep_capture.csv`: it should contain `session`, `ppi`, `bpm`, and `motion_epoch` rows.
+5. Compare the same date's existing `sleep_and_activity.csv` motion-derived deep/light labels with
+   the new raw inputs. For this first test, compare capture coverage and battery use—not stage
+   accuracy. A stage classifier has not yet been trained or validated.
 
 ## Confirmed HealthKit mapping for later slices
 

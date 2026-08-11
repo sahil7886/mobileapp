@@ -54,7 +54,9 @@
   points and the iOS exporter attaches them to the matching `HKWorkout`. Verify Time 2 event
   frequency, battery impact, sensor quality, Apple Health association, and retry behavior.
 - [~] Sleep detection: existing sleep/deep-sleep overlays export through the cross-platform path;
-  validate boundaries and quality before changing the algorithm.
+  their existing motion-derived labels remain intact. A new overnight stream preserves denser PPI,
+  BPM quality, and 30-second motion inputs for comparison and a future classifier; validate its
+  battery use, timing, and coverage before changing the algorithm.
 - [~] Workout detection: existing walk/run/open-workout overlays export as workouts. Manual
   built-in Workout HR association is implemented; automatic-detection quality and duplicate
   handling still require device testing.
@@ -68,9 +70,16 @@
 - [ ] Production workout HR cadence: the worker can request 1/5/15 seconds, but the SDK treats
   the value as a battery- and quality-dependent suggestion. Determine a Time 2 battery budget and
   observed timestamp spacing before choosing a default.
-- [ ] Overnight HRV: PPI is now captured only during a manually started built-in Workout. Add a
-  low-power sleep-specific capture policy, validate interval quality, and validate a SDNN
+- [~] Overnight capture: while the existing motion-derived sleep state is active between 21:00 and
+  12:00 local time, Time 2 firmware requests continuous accepted PPI, records BPM/quality every
+  30 seconds, and summarizes the existing 25 Hz motion stream into 30-second records. It buffers
+  a compact, replay-safe stream locally; the phone stores it before ACKing, exposes a count, and
+  includes `sleep_capture.csv` in ZIP exports. Physical battery, coverage, off-wrist,
+  reboot-resume, and DataLogging validation are pending.
+- [ ] Overnight HRV: validate accepted-interval quality and the phone-side artifact filter/SDNN
   algorithm before writing `HKQuantityTypeIdentifierHeartRateVariabilitySDNN`.
+- [ ] Sleep-stage classifier: train and validate against a suitable reference dataset before
+  replacing or augmenting the retained motion-derived deep/light labels in Apple Health.
 - [ ] Bevel HRV: Apple Health requires HRV as SDNN milliseconds. Direct overnight SDNN export and
   Bevel display remain unverified; do not claim either until tested in Apple Health and Bevel.
 - [ ] Bevel heart-rate display: Apple Health acceptance is implemented, but appearance in Bevel is

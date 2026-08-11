@@ -3,6 +3,7 @@ package coredevices.pebble.health
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -74,6 +75,27 @@ class HealthDataExportCsvTest {
         assertContains(HealthDataExportCsv.BEAT_TO_BEAT_HEADER, "interval_ms,sensor_quality")
         assertContains(row, ",1700000000,8,888,3,1,")
         assertContains(row, "builtin-workout-ppi-v1:1700000000:8,builtin_workout_ppi")
+    }
+
+    @Test
+    fun sleepCaptureRowsKeepTypeQualityAndStableIdentity() {
+        val row = HealthDataExportCsv.sleepCaptureRow(
+            SleepCaptureSampleEntity(
+                recordId = "sleep-capture-v1:1700000000:8",
+                sessionId = 1_700_000_000,
+                sequence = 8,
+                timestampEpochSeconds = 1_700_000_007,
+                value = 888,
+                quality = 3,
+                sampleType = 1,
+                flags = 0,
+                receivedAtEpochSeconds = 1_700_000_100,
+            ),
+        )
+
+        assertContains(HealthDataExportCsv.SLEEP_CAPTURE_HEADER, "capture_session_id,sequence,sample_type")
+        assertContains(row, ",1700000000,8,ppi,888,3,0,")
+        assertContains(row, "sleep-capture-v1:1700000000:8,system_activity_sleep_capture")
     }
 
     @Test

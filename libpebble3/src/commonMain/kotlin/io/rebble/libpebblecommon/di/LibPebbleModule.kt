@@ -110,6 +110,7 @@ import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateDataProcesso
 import io.rebble.libpebblecommon.datalogging.Datalogging
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutPpiDataProcessor
 import io.rebble.libpebblecommon.datalogging.HealthCaptureDataProcessor
+import io.rebble.libpebblecommon.datalogging.SleepCaptureDataProcessor
 import io.rebble.libpebblecommon.datalogging.HealthDataProcessor
 import io.rebble.libpebblecommon.health.Health
 import io.rebble.libpebblecommon.js.HttpInterceptorManager
@@ -363,6 +364,7 @@ fun initKoin(
                 singleOf(::HealthCaptureDataProcessor)
                 singleOf(::BuiltinWorkoutHeartRateDataProcessor)
                 singleOf(::BuiltinWorkoutPpiDataProcessor)
+                singleOf(::SleepCaptureDataProcessor)
                 single { get<Database>().watchPrefDao() }
                 single { get<Database>().weatherAppDao() }
                 single { get<Database>().appPrefsDao() }
