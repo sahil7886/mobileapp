@@ -27,6 +27,7 @@ import io.rebble.libpebblecommon.database.dao.DailyMovementAggregate
 import io.rebble.libpebblecommon.database.dao.HealthAggregates
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
+import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.database.dao.TimelineNotificationRealDao
 import io.rebble.libpebblecommon.database.dao.VibePatternDao
@@ -179,6 +180,28 @@ interface HealthDataApi {
 
     /** Number of raw overnight classifier-input records retained locally. */
     suspend fun countSleepCaptureSamples(): Int
+
+    /** Completed, not-yet-calculated overnight PPI sessions for the supplied HRV algorithm. */
+    suspend fun getCompletedSleepCaptureSessionIdsWithoutHrv(algorithmVersion: Int): List<Long>
+
+    /** Complete raw records for one watch-side capture session, ordered for HRV calculation. */
+    suspend fun getSleepCaptureSamplesForSession(sessionId: Long): List<SleepCaptureSampleEntity>
+
+    /** Persist derived SDNN rows. Duplicate replay is ignored by their stable IDs. */
+    suspend fun insertOvernightHrv(data: List<OvernightHrvEntity>): Int
+
+    /** SDNN values that Apple Health has not accepted yet. */
+    suspend fun getPendingOvernightHrv(limit: Int): List<OvernightHrvEntity>
+
+    /** Moves only successfully written values past the Apple Health checkpoint. */
+    suspend fun markOvernightHrvExported(recordIds: List<String>): Int
+
+    suspend fun countPendingOvernightHrv(): Int
+
+    suspend fun countExportedOvernightHrv(): Int
+
+    /** Derived SDNN values for a local mobile-data export. */
+    suspend fun getOvernightHrvForRange(start: Long, end: Long): List<OvernightHrvEntity>
 
     /** Returns minute-level health data for the given epoch-second range. */
     suspend fun getHealthDataForRange(start: Long, end: Long): List<HealthDataEntity>

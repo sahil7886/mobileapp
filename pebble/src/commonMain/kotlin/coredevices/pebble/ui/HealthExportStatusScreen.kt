@@ -59,8 +59,8 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            "Raw PPI intervals are retained locally for export. They are not written directly " +
-                "to Apple Health because HealthKit HRV expects an SDNN aggregate, not intervals.",
+            "Completed overnight PPI sessions are quality-filtered on this phone into five-minute " +
+                "SDNN values. Raw intervals remain local and are never written to Apple Health.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -82,8 +82,8 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
             Text("Sync now")
         }
         Text(
-            "Bevel verification is pending. This screen confirms that Apple Health accepted the " +
-                "export; it does not claim that any third-party app displays it.",
+            "Apple Health acceptance is tracked per record. Bevel verification remains pending; " +
+                "this screen does not claim that a third-party app displays the data.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -95,12 +95,16 @@ private fun HealthExportStatusRows(status: HealthExportStatus) {
     StatusRow("Health platform", if (status.healthPlatformAvailable) "Available" else "Unavailable")
     StatusRow("Heart-rate permission", status.heartRateAuthorization.toDisplayName())
     StatusRow("Workout permission", status.workoutAuthorization.toDisplayName())
+    StatusRow("Overnight HRV permission", status.hrvAuthorization.toDisplayName())
     StatusRow("Last successful sync", status.lastSuccessfulSyncEpochSeconds.toDisplayTime())
     StatusRow("Pending heart-rate records", status.pendingHeartRateRecords.toString())
     StatusRow("Pending workout HR records", status.pendingGranularHeartRateRecords.toString())
     StatusRow("Raw PPI records on phone", status.storedBeatToBeatRecords.toString())
     StatusRow("Overnight classifier inputs", status.storedSleepCaptureRecords.toString())
+    StatusRow("Pending overnight SDNN records", status.pendingOvernightHrvRecords.toString())
+    StatusRow("Apple Health SDNN records", status.exportedOvernightHrvRecords.toString())
     StatusRow("Failed heart-rate records", status.failedHeartRateRecords.toString())
+    StatusRow("Failed overnight HRV records", status.failedOvernightHrvRecords.toString())
     StatusRow("Data-source conflicts", status.dataSourceConflicts)
 }
 

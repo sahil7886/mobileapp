@@ -10,6 +10,8 @@ internal actual class NativeHeartRateExporter {
 
     actual fun workoutAuthorization(): HealthWriteAuthorization = HealthWriteAuthorization.NotApplicable
 
+    actual fun hrvAuthorization(): HealthWriteAuthorization = HealthWriteAuthorization.NotApplicable
+
     actual suspend fun requestAuthorization(): Result<Boolean> = Result.success(true)
 
     actual suspend fun write(samples: List<HeartRateExportSample>): Result<HeartRateExportWriteResult> =
@@ -18,5 +20,10 @@ internal actual class NativeHeartRateExporter {
     actual suspend fun writeWorkout(
         workout: WorkoutHeartRateExport,
     ): Result<WorkoutHeartRateExportWriteResult> =
+        Result.failure(UnsupportedOperationException("Native HealthKit exporter is only used on iOS"))
+
+    actual suspend fun writeOvernightHrv(
+        samples: List<OvernightHrvExport>,
+    ): Result<OvernightHrvExportWriteResult> =
         Result.failure(UnsupportedOperationException("Native HealthKit exporter is only used on iOS"))
 }

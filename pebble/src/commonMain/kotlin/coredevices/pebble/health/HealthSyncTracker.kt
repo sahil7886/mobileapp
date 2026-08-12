@@ -11,12 +11,16 @@ data class HealthExportStatus(
     val healthPlatformAvailable: Boolean,
     val heartRateAuthorization: HealthWriteAuthorization,
     val workoutAuthorization: HealthWriteAuthorization,
+    val hrvAuthorization: HealthWriteAuthorization,
     val lastSuccessfulSyncEpochSeconds: Long,
     val pendingHeartRateRecords: Int,
     val pendingGranularHeartRateRecords: Int,
     val storedBeatToBeatRecords: Int,
     val storedSleepCaptureRecords: Int,
+    val pendingOvernightHrvRecords: Int,
+    val exportedOvernightHrvRecords: Int,
     val failedHeartRateRecords: Int,
+    val failedOvernightHrvRecords: Int,
     val lastError: String?,
     /**
      * The vertical slice asks only for write access.  HealthKit deliberately hides other sources
@@ -39,6 +43,7 @@ class HealthSyncTracker(private val settings: Settings) {
         private const val KEY_LAST_SYNCED_OVERLAY = "health_sync_last_overlay_timestamp"
         private const val KEY_LAST_SUCCESSFUL_EXPORT = "health_sync_last_successful_export_timestamp"
         private const val KEY_FAILED_HEART_RATE_RECORDS = "health_sync_failed_heart_rate_records"
+        private const val KEY_FAILED_OVERNIGHT_HRV_RECORDS = "health_sync_failed_overnight_hrv_records"
         private const val KEY_LAST_ERROR = "health_sync_last_error"
     }
 
@@ -78,19 +83,25 @@ class HealthSyncTracker(private val settings: Settings) {
         healthPlatformAvailable: Boolean = _status.value.healthPlatformAvailable,
         heartRateAuthorization: HealthWriteAuthorization = _status.value.heartRateAuthorization,
         workoutAuthorization: HealthWriteAuthorization = _status.value.workoutAuthorization,
+        hrvAuthorization: HealthWriteAuthorization = _status.value.hrvAuthorization,
         pendingHeartRateRecords: Int = _status.value.pendingHeartRateRecords,
         pendingGranularHeartRateRecords: Int = _status.value.pendingGranularHeartRateRecords,
         storedBeatToBeatRecords: Int = _status.value.storedBeatToBeatRecords,
         storedSleepCaptureRecords: Int = _status.value.storedSleepCaptureRecords,
+        pendingOvernightHrvRecords: Int = _status.value.pendingOvernightHrvRecords,
+        exportedOvernightHrvRecords: Int = _status.value.exportedOvernightHrvRecords,
     ) {
         _status.value = snapshot(
             healthPlatformAvailable = healthPlatformAvailable,
             heartRateAuthorization = heartRateAuthorization,
             workoutAuthorization = workoutAuthorization,
+            hrvAuthorization = hrvAuthorization,
             pendingHeartRateRecords = pendingHeartRateRecords,
             pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
             storedBeatToBeatRecords = storedBeatToBeatRecords,
             storedSleepCaptureRecords = storedSleepCaptureRecords,
+            pendingOvernightHrvRecords = pendingOvernightHrvRecords,
+            exportedOvernightHrvRecords = exportedOvernightHrvRecords,
         )
     }
 
@@ -108,15 +119,32 @@ class HealthSyncTracker(private val settings: Settings) {
         publish()
     }
 
+    fun recordSuccessfulOvernightHrvExport(lastTimestamp: Long) {
+        settings[KEY_LAST_SUCCESSFUL_EXPORT] = lastTimestamp
+        settings[KEY_FAILED_OVERNIGHT_HRV_RECORDS] = 0
+        settings.remove(KEY_LAST_ERROR)
+        publish()
+    }
+
+    fun recordOvernightHrvExportFailure(recordCount: Int, error: Throwable) {
+        settings[KEY_FAILED_OVERNIGHT_HRV_RECORDS] =
+            settings.getInt(KEY_FAILED_OVERNIGHT_HRV_RECORDS, 0) + recordCount
+        settings[KEY_LAST_ERROR] = error.message ?: error::class.simpleName.orEmpty()
+        publish()
+    }
+
     private fun publish() {
         _status.value = snapshot(
             healthPlatformAvailable = _status.value.healthPlatformAvailable,
             heartRateAuthorization = _status.value.heartRateAuthorization,
             workoutAuthorization = _status.value.workoutAuthorization,
+            hrvAuthorization = _status.value.hrvAuthorization,
             pendingHeartRateRecords = _status.value.pendingHeartRateRecords,
             pendingGranularHeartRateRecords = _status.value.pendingGranularHeartRateRecords,
             storedBeatToBeatRecords = _status.value.storedBeatToBeatRecords,
             storedSleepCaptureRecords = _status.value.storedSleepCaptureRecords,
+            pendingOvernightHrvRecords = _status.value.pendingOvernightHrvRecords,
+            exportedOvernightHrvRecords = _status.value.exportedOvernightHrvRecords,
         )
     }
 
@@ -124,20 +152,27 @@ class HealthSyncTracker(private val settings: Settings) {
         healthPlatformAvailable: Boolean = false,
         heartRateAuthorization: HealthWriteAuthorization = HealthWriteAuthorization.NotDetermined,
         workoutAuthorization: HealthWriteAuthorization = HealthWriteAuthorization.NotDetermined,
+        hrvAuthorization: HealthWriteAuthorization = HealthWriteAuthorization.NotDetermined,
         pendingHeartRateRecords: Int = 0,
         pendingGranularHeartRateRecords: Int = 0,
         storedBeatToBeatRecords: Int = 0,
         storedSleepCaptureRecords: Int = 0,
+        pendingOvernightHrvRecords: Int = 0,
+        exportedOvernightHrvRecords: Int = 0,
     ): HealthExportStatus = HealthExportStatus(
         healthPlatformAvailable = healthPlatformAvailable,
         heartRateAuthorization = heartRateAuthorization,
         workoutAuthorization = workoutAuthorization,
+        hrvAuthorization = hrvAuthorization,
         lastSuccessfulSyncEpochSeconds = settings.getLong(KEY_LAST_SUCCESSFUL_EXPORT, 0L),
         pendingHeartRateRecords = pendingHeartRateRecords,
         pendingGranularHeartRateRecords = pendingGranularHeartRateRecords,
         storedBeatToBeatRecords = storedBeatToBeatRecords,
         storedSleepCaptureRecords = storedSleepCaptureRecords,
+        pendingOvernightHrvRecords = pendingOvernightHrvRecords,
+        exportedOvernightHrvRecords = exportedOvernightHrvRecords,
         failedHeartRateRecords = settings.getInt(KEY_FAILED_HEART_RATE_RECORDS, 0),
+        failedOvernightHrvRecords = settings.getInt(KEY_FAILED_OVERNIGHT_HRV_RECORDS, 0),
         lastError = settings.getStringOrNull(KEY_LAST_ERROR),
     )
 }

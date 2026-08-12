@@ -10,11 +10,13 @@ import platform.HealthKit.HKAuthorizationStatusNotDetermined
 import platform.HealthKit.HKAuthorizationStatusSharingAuthorized
 import platform.HealthKit.HKAuthorizationStatusSharingDenied
 import platform.HealthKit.HKHealthStore
+import platform.HealthKit.HKMetricPrefixMilli
 import platform.HealthKit.HKObjectType
 import platform.HealthKit.HKQuantity
 import platform.HealthKit.HKQuantitySample
 import platform.HealthKit.HKQuantityType
 import platform.HealthKit.HKQuantityTypeIdentifierHeartRate
+import platform.HealthKit.HKQuantityTypeIdentifierHeartRateVariabilitySDNN
 import platform.HealthKit.HKSampleType
 import platform.HealthKit.HKUnit
 import platform.HealthKit.HKWorkoutActivityTypeOther
@@ -43,6 +45,9 @@ internal actual class NativeHeartRateExporter {
     private val heartRateType = HKQuantityType.quantityTypeForIdentifier(
         HKQuantityTypeIdentifierHeartRate,
     )
+    private val heartRateVariabilityType = HKQuantityType.quantityTypeForIdentifier(
+        HKQuantityTypeIdentifierHeartRateVariabilitySDNN,
+    )
     private val workoutType = HKObjectType.workoutType()
 
     actual val isActive: Boolean = true
@@ -61,6 +66,12 @@ internal actual class NativeHeartRateExporter {
         return authorizationFor(workoutType)
     }
 
+    actual fun hrvAuthorization(): HealthWriteAuthorization {
+        val type = heartRateVariabilityType ?: return HealthWriteAuthorization.Unavailable
+        if (!HKHealthStore.isHealthDataAvailable()) return HealthWriteAuthorization.Unavailable
+        return authorizationFor(type)
+    }
+
     private fun authorizationFor(type: HKObjectType): HealthWriteAuthorization =
         when (healthStore.authorizationStatusForType(type)) {
             HKAuthorizationStatusSharingAuthorized -> HealthWriteAuthorization.Authorized
@@ -71,11 +82,12 @@ internal actual class NativeHeartRateExporter {
 
     actual suspend fun requestAuthorization(): Result<Boolean> = runCatching {
         val type = heartRateType ?: error("Heart-rate HealthKit type is unavailable")
+        val hrvType = heartRateVariabilityType ?: error("HRV HealthKit type is unavailable")
         if (!HKHealthStore.isHealthDataAvailable()) error("HealthKit is unavailable")
 
         suspendCancellableCoroutine { continuation ->
             healthStore.requestAuthorizationToShareTypes(
-                typesToShare = setOf<HKSampleType>(type, workoutType),
+                typesToShare = setOf<HKSampleType>(type, workoutType, hrvType),
                 readTypes = emptySet<HKObjectType>(),
             ) { _, error ->
                 if (continuation.isCancelled) return@requestAuthorizationToShareTypes
@@ -152,6 +164,28 @@ internal actual class NativeHeartRateExporter {
         WorkoutHeartRateExportWriteResult(workout.heartRateSamples.size)
     }
 
+    actual suspend fun writeOvernightHrv(
+        samples: List<OvernightHrvExport>,
+    ): Result<OvernightHrvExportWriteResult> = runCatching {
+        requireNotNull(heartRateVariabilityType) { "HRV HealthKit type is unavailable" }
+        require(HKHealthStore.isHealthDataAvailable()) {
+            "HealthKit HRV export is unavailable"
+        }
+        require(hrvAuthorization() == HealthWriteAuthorization.Authorized) {
+            "Apple Health HRV sharing is not authorized"
+        }
+
+        samples.chunked(MAX_RECORDS_PER_SAVE).forEach { batch ->
+            val objects = batch.map(::toHealthKitHrvSample)
+            save(objects)
+            logger.d {
+                "HEALTHKIT_HRV_SDNN saved=${objects.size} first=${batch.first().windowStartEpochSeconds} " +
+                    "last=${batch.last().windowStartEpochSeconds}"
+            }
+        }
+        OvernightHrvExportWriteResult(writtenRecords = samples.size)
+    }
+
     private fun toHealthKitSample(sample: HeartRateExportSample): HKQuantitySample {
         val type = requireNotNull(heartRateType)
         val time = Instant.fromEpochSeconds(sample.timestampSeconds).toNSDate()
@@ -175,6 +209,29 @@ internal actual class NativeHeartRateExporter {
         )
     }
 
+    private fun toHealthKitHrvSample(sample: OvernightHrvExport): HKQuantitySample {
+        val type = requireNotNull(heartRateVariabilityType)
+        return HKQuantitySample.quantitySampleWithType(
+            quantityType = type,
+            quantity = HKQuantity.quantityWithUnit(
+                unit = HKUnit.secondUnitWithMetricPrefix(HKMetricPrefixMilli),
+                doubleValue = sample.sdnnMilliseconds,
+            ),
+            startDate = Instant.fromEpochSeconds(sample.windowStartEpochSeconds).toNSDate(),
+            endDate = Instant.fromEpochSeconds(sample.windowEndEpochSeconds).toNSDate(),
+            metadata = mapOf(
+                HK_METADATA_SYNC_IDENTIFIER to sample.syncIdentifier,
+                // A newer SDNN algorithm version replaces this exact logical calculation window.
+                HK_METADATA_SYNC_VERSION to sample.algorithmVersion,
+                HK_METADATA_WAS_USER_ENTERED to false,
+                HK_METADATA_EXTERNAL_UUID to sample.syncIdentifier,
+                HK_METADATA_ALGORITHM_VERSION to sample.algorithmVersion,
+                METADATA_PEBBLE_DEVICE to "Pebble Time 2",
+                METADATA_PEBBLE_HRV_METHOD to "sdnn_from_quality_filtered_ppi",
+            ),
+        )
+    }
+
     private suspend fun save(objects: List<HKQuantitySample>) {
         if (objects.isEmpty()) return
         suspendCancellableCoroutine<Unit> { continuation ->
@@ -183,7 +240,7 @@ internal actual class NativeHeartRateExporter {
                 when {
                     error != null -> continuation.resumeWithException(error.asException())
                     !success -> continuation.resumeWithException(
-                        IllegalStateException("HealthKit declined the heart-rate save without an error"),
+                        IllegalStateException("HealthKit declined the health-data save without an error"),
                     )
                     else -> continuation.resume(Unit)
                 }
@@ -275,8 +332,10 @@ internal actual class NativeHeartRateExporter {
         const val HK_METADATA_SYNC_VERSION = "HKSyncVersion"
         const val HK_METADATA_WAS_USER_ENTERED = "HKWasUserEntered"
         const val HK_METADATA_EXTERNAL_UUID = "HKExternalUUID"
+        const val HK_METADATA_ALGORITHM_VERSION = "HKAlgorithmVersion"
         const val METADATA_PEBBLE_SEQUENCE = "com.coredevices.pebble.health.sequence"
         const val METADATA_PEBBLE_WORKOUT_ID = "com.coredevices.pebble.health.workout_id"
         const val METADATA_PEBBLE_DEVICE = "com.coredevices.pebble.health.device"
+        const val METADATA_PEBBLE_HRV_METHOD = "com.coredevices.pebble.health.hrv_method"
     }
 }

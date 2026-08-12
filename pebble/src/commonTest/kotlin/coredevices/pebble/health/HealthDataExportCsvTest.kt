@@ -3,6 +3,7 @@ package coredevices.pebble.health
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import kotlin.test.Test
@@ -96,6 +97,31 @@ class HealthDataExportCsvTest {
         assertContains(HealthDataExportCsv.SLEEP_CAPTURE_HEADER, "capture_session_id,sequence,sample_type")
         assertContains(row, ",1700000000,8,ppi,888,3,0,")
         assertContains(row, "sleep-capture-v1:1700000000:8,system_activity_sleep_capture")
+    }
+
+    @Test
+    fun overnightHrvRowsKeepSdnnAndCalculationProvenance() {
+        val row = HealthDataExportCsv.overnightHrvRow(
+            OvernightHrvEntity(
+                recordId = "overnight-hrv-sdnn:7:1700000100",
+                sessionId = 7,
+                windowStartEpochSeconds = 1_700_000_100,
+                windowEndEpochSeconds = 1_700_000_400,
+                sdnnMilliseconds = 42.5,
+                sourcePpiSampleCount = 300,
+                qualityAcceptedSampleCount = 294,
+                artifactRejectedSampleCount = 2,
+                qualityCoveragePercent = 98,
+                temporalCoveragePercent = 96,
+                algorithmVersion = 1,
+                calculatedAtEpochSeconds = 1_700_001_000,
+                exportedToAppleHealth = true,
+            ),
+        )
+
+        assertContains(HealthDataExportCsv.OVERNIGHT_HRV_HEADER, "sdnn_milliseconds")
+        assertContains(row, ",7,42.5,300,294,2,98,96,1,")
+        assertContains(row, ",true,overnight-hrv-sdnn:7:1700000100")
     }
 
     @Test

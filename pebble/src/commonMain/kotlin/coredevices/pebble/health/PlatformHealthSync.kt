@@ -17,8 +17,10 @@ import coredevices.util.AppResumed
 import io.rebble.libpebblecommon.connection.HealthDataApi
 import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import io.rebble.libpebblecommon.health.OverlayType
+import io.rebble.libpebblecommon.health.OvernightHrvCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 internal expect fun exerciseWriteTypes(): List<HealthDataType>
@@ -64,6 +67,8 @@ class PlatformHealthSync(
         /** Bound a background pass; remaining records stay durably pending for the next sync. */
         private const val MAX_GRANULAR_BATCHES_PER_SYNC = 10
         private const val MAX_GRANULAR_RECORDS_PER_BATCH = 100
+        private const val MAX_OVERNIGHT_HRV_BATCHES_PER_SYNC = 10
+        private const val MAX_OVERNIGHT_HRV_RECORDS_PER_BATCH = 100
         private const val BUILTIN_WORKOUT_LOOKUP_WINDOW_SECONDS = 24 * 60 * 60L
         private val BUILTIN_WORKOUT_OVERLAY_TYPES = setOf(
             OverlayType.Walk.value,
@@ -108,6 +113,7 @@ class PlatformHealthSync(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
             workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
+            hrvAuthorization = nativeHeartRateExporter.hrvAuthorization(),
         )
         logger.v { "requestPermissions success=$success" }
         tracker.setEnabled(success)
@@ -137,6 +143,7 @@ class PlatformHealthSync(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
             workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
+            hrvAuthorization = nativeHeartRateExporter.hrvAuthorization(),
         )
         logger.v { "hasPermission: generic=$genericResult native=$nativeAuthorized" }
         return authorized
@@ -155,6 +162,7 @@ class PlatformHealthSync(
             syncSteps()
             syncHeartRate()
             syncGranularWorkoutHeartRate()
+            syncOvernightHrv()
             syncOverlays()
             refreshExportStatus()
             logger.d { "Health platform sync completed" }
@@ -172,15 +180,100 @@ class PlatformHealthSync(
         val pendingGranularRecords = healthDataApi.countPendingGranularHeartRate()
         val storedBeatToBeatRecords = healthDataApi.countBeatToBeat()
         val storedSleepCaptureRecords = healthDataApi.countSleepCaptureSamples()
+        val pendingOvernightHrvRecords = healthDataApi.countPendingOvernightHrv()
+        val exportedOvernightHrvRecords = healthDataApi.countExportedOvernightHrv()
         tracker.updateExportStatus(
             healthPlatformAvailable = isAvailable(),
             heartRateAuthorization = nativeHeartRateExporter.authorization(),
             workoutAuthorization = nativeHeartRateExporter.workoutAuthorization(),
+            hrvAuthorization = nativeHeartRateExporter.hrvAuthorization(),
             pendingHeartRateRecords = pendingMinuteRecords,
             pendingGranularHeartRateRecords = pendingGranularRecords,
             storedBeatToBeatRecords = storedBeatToBeatRecords,
             storedSleepCaptureRecords = storedSleepCaptureRecords,
+            pendingOvernightHrvRecords = pendingOvernightHrvRecords,
+            exportedOvernightHrvRecords = exportedOvernightHrvRecords,
         )
+    }
+
+    /**
+     * Calculates only after PebbleOS delivered a terminal sleep-capture record, then sends
+     * quality-filtered SDNN aggregates to HealthKit. Raw PPI stays on the phone for export and
+     * diagnostics; it is never presented to HealthKit as HRV.
+     */
+    private suspend fun syncOvernightHrv() {
+        val uncalculatedSessions = healthDataApi.getCompletedSleepCaptureSessionIdsWithoutHrv(
+            OvernightHrvCalculator.ALGORITHM_VERSION,
+        )
+        uncalculatedSessions.forEach { sessionId ->
+            val calculations = OvernightHrvCalculator.calculate(
+                sessionId = sessionId,
+                samples = healthDataApi.getSleepCaptureSamplesForSession(sessionId),
+            )
+            val calculatedAt = Clock.System.now().epochSeconds
+            val inserted = healthDataApi.insertOvernightHrv(calculations.map { calculation ->
+                OvernightHrvEntity(
+                    recordId = calculation.recordId,
+                    sessionId = calculation.sessionId,
+                    windowStartEpochSeconds = calculation.windowStartEpochSeconds,
+                    windowEndEpochSeconds = calculation.windowEndEpochSeconds,
+                    sdnnMilliseconds = calculation.sdnnMilliseconds,
+                    sourcePpiSampleCount = calculation.sourcePpiSampleCount,
+                    qualityAcceptedSampleCount = calculation.qualityAcceptedSampleCount,
+                    artifactRejectedSampleCount = calculation.artifactRejectedSampleCount,
+                    qualityCoveragePercent = calculation.qualityCoveragePercent,
+                    temporalCoveragePercent = calculation.temporalCoveragePercent,
+                    algorithmVersion = calculation.algorithmVersion,
+                    calculatedAtEpochSeconds = calculatedAt,
+                )
+            })
+            logger.d {
+                "HEALTH_HRV_CALC session=$sessionId windows=${calculations.size} inserted=$inserted " +
+                    "algorithm=${OvernightHrvCalculator.ALGORITHM_VERSION}"
+            }
+        }
+
+        if (!nativeHeartRateExporter.isActive) return
+        if (nativeHeartRateExporter.hrvAuthorization() != HealthWriteAuthorization.Authorized) {
+            logger.d { "HEALTH_HRV waiting for Apple Health HRV permission" }
+            return
+        }
+
+        var batches = 0
+        while (batches < MAX_OVERNIGHT_HRV_BATCHES_PER_SYNC) {
+            val pending = healthDataApi.getPendingOvernightHrv(MAX_OVERNIGHT_HRV_RECORDS_PER_BATCH)
+            if (pending.isEmpty()) return
+
+            val result = nativeHeartRateExporter.writeOvernightHrv(pending.map { record ->
+                OvernightHrvExport(
+                    sourceRecordId = record.recordId,
+                    windowStartEpochSeconds = record.windowStartEpochSeconds,
+                    windowEndEpochSeconds = record.windowEndEpochSeconds,
+                    sdnnMilliseconds = record.sdnnMilliseconds,
+                    algorithmVersion = record.algorithmVersion,
+                )
+            })
+            result.fold(
+                onSuccess = { written ->
+                    healthDataApi.markOvernightHrvExported(pending.map { it.recordId })
+                    tracker.recordSuccessfulOvernightHrvExport(
+                        pending.maxOf { it.windowEndEpochSeconds },
+                    )
+                    logger.d {
+                        "HEALTH_HRV_EXPORT saved=${written.writtenRecords} " +
+                            "last=${pending.maxOf { it.windowEndEpochSeconds }}"
+                    }
+                },
+                onFailure = { error ->
+                    tracker.recordOvernightHrvExportFailure(pending.size, error)
+                    logger.e(error) {
+                        "HEALTH_HRV_EXPORT failed=${pending.size}; rows retained for retry"
+                    }
+                    return
+                },
+            )
+            batches++
+        }
     }
 
     private suspend fun syncSteps() {

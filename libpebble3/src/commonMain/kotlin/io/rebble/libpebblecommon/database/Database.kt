@@ -36,6 +36,7 @@ import io.rebble.libpebblecommon.database.entity.CalendarEntity
 import io.rebble.libpebblecommon.database.entity.ContactEntity
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
+import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.database.entity.HealthSettingsEntryEntity
 import io.rebble.libpebblecommon.database.entity.HealthSettingsEntrySyncEntity
@@ -91,6 +92,7 @@ internal const val DATABASE_FILENAME = "libpebble3.db"
         GranularHeartRateEntity::class,
         BeatToBeatEntity::class,
         SleepCaptureSampleEntity::class,
+        OvernightHrvEntity::class,
         OverlayDataEntity::class,
         HealthStatEntity::class,
         HealthStatSyncEntity::class,
@@ -102,7 +104,7 @@ internal const val DATABASE_FILENAME = "libpebble3.db"
         AppPrefsEntrySyncEntity::class,
         NotificationRuleEntity::class,
     ],
-    version = 46,
+    version = 47,
     autoMigrations = [
         AutoMigration(from = 10, to = 11),
         AutoMigration(from = 11, to = 12),
@@ -276,9 +278,49 @@ val MIGRATION_45_46 = object : Migration(45, 46) {
     }
 }
 
+/** Stores derived, replay-safe SDNN values separately from raw overnight PPI input. */
+val MIGRATION_46_47 = object : Migration(46, 47) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `overnight_hrv` (
+              `recordId` TEXT NOT NULL,
+              `sessionId` INTEGER NOT NULL,
+              `windowStartEpochSeconds` INTEGER NOT NULL,
+              `windowEndEpochSeconds` INTEGER NOT NULL,
+              `sdnnMilliseconds` REAL NOT NULL,
+              `sourcePpiSampleCount` INTEGER NOT NULL,
+              `qualityAcceptedSampleCount` INTEGER NOT NULL,
+              `artifactRejectedSampleCount` INTEGER NOT NULL,
+              `qualityCoveragePercent` INTEGER NOT NULL,
+              `temporalCoveragePercent` INTEGER NOT NULL,
+              `algorithmVersion` INTEGER NOT NULL,
+              `calculatedAtEpochSeconds` INTEGER NOT NULL,
+              `exportedToAppleHealth` INTEGER NOT NULL,
+              PRIMARY KEY(`recordId`)
+            )
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_overnight_hrv_sessionId_windowStartEpochSeconds` " +
+                "ON `overnight_hrv` (`sessionId`, `windowStartEpochSeconds`)",
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_overnight_hrv_exportedToAppleHealth` " +
+                "ON `overnight_hrv` (`exportedToAppleHealth`)",
+        )
+    }
+}
+
 fun getRoomDatabase(ctx: AppContext): Database {
     return getDatabaseBuilder(ctx)
-        .addMigrations(MIGRATION_39_40, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46)
+        .addMigrations(
+            MIGRATION_39_40,
+            MIGRATION_43_44,
+            MIGRATION_44_45,
+            MIGRATION_45_46,
+            MIGRATION_46_47,
+        )
         .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
         // V7 required a full re-create.
         .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2, 3, 4, 5, 6, 7, 8, 9)

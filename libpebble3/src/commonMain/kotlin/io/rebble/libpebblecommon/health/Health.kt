@@ -10,6 +10,7 @@ import io.rebble.libpebblecommon.database.dao.HealthDao
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
+import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.database.entity.HRMonitoringInterval
 import io.rebble.libpebblecommon.database.entity.HealthGender
@@ -212,6 +213,30 @@ class Health(
     ): List<SleepCaptureSampleEntity> = healthDao.getSleepCaptureSamplesForRange(start, end)
 
     override suspend fun countSleepCaptureSamples(): Int = healthDao.countSleepCaptureSamples()
+
+    override suspend fun getCompletedSleepCaptureSessionIdsWithoutHrv(
+        algorithmVersion: Int,
+    ): List<Long> = healthDao.getCompletedSleepCaptureSessionIdsWithoutHrv(algorithmVersion)
+
+    override suspend fun getSleepCaptureSamplesForSession(
+        sessionId: Long,
+    ): List<SleepCaptureSampleEntity> = healthDao.getSleepCaptureSamplesForSession(sessionId)
+
+    override suspend fun insertOvernightHrv(data: List<OvernightHrvEntity>): Int =
+        if (data.isEmpty()) 0 else healthDao.insertOvernightHrv(data).count { it != -1L }
+
+    override suspend fun getPendingOvernightHrv(limit: Int): List<OvernightHrvEntity> =
+        healthDao.getPendingOvernightHrv(limit)
+
+    override suspend fun markOvernightHrvExported(recordIds: List<String>): Int =
+        if (recordIds.isEmpty()) 0 else healthDao.markOvernightHrvExported(recordIds)
+
+    override suspend fun countPendingOvernightHrv(): Int = healthDao.countPendingOvernightHrv()
+
+    override suspend fun countExportedOvernightHrv(): Int = healthDao.countExportedOvernightHrv()
+
+    override suspend fun getOvernightHrvForRange(start: Long, end: Long): List<OvernightHrvEntity> =
+        healthDao.getOvernightHrvForRange(start, end)
 
     override suspend fun getOverlayEntriesAfter(
         afterTimestamp: Long,

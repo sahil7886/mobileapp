@@ -11,6 +11,7 @@ import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
 import io.rebble.libpebblecommon.health.OverlayType
@@ -52,6 +53,7 @@ data class HealthDataExport(
     val granularHeartRateRecords: Int,
     val beatToBeatRecords: Int,
     val sleepCaptureRecords: Int,
+    val overnightHrvRecords: Int,
     val overlayRecords: Int,
 )
 
@@ -76,12 +78,13 @@ class HealthDataExporter(
                 val endEpochSeconds = clock.now().epochSeconds
                 val startEpochSeconds = period.startEpochSeconds(endEpochSeconds)
 
-                // Fetch all three persisted Pebble health streams.  Raw-only workout records are
-                // included even though the Apple Health writer quite correctly excludes them.
+                // Fetch persisted Pebble streams. Raw-only PPI records are included even though
+                // the Apple Health writer correctly exports only their derived SDNN aggregate.
                 val minuteHealth = libPebble.getHealthDataForRange(startEpochSeconds, endEpochSeconds)
                 val granularHeartRate = libPebble.getGranularHeartRateForRange(startEpochSeconds, endEpochSeconds)
                 val beatToBeat = libPebble.getBeatToBeatForRange(startEpochSeconds, endEpochSeconds)
                 val sleepCapture = libPebble.getSleepCaptureSamplesForRange(startEpochSeconds, endEpochSeconds)
+                val overnightHrv = libPebble.getOvernightHrvForRange(startEpochSeconds, endEpochSeconds)
                 val overlays = libPebble.getOverlayEntriesForRange(startEpochSeconds, endEpochSeconds)
 
                 val fileName = "pebble-health-${clock.now().toEpochMilliseconds()}-${period.fileToken}.zip"
@@ -90,7 +93,8 @@ class HealthDataExporter(
                 logger.i {
                     "HEALTH_DATA_EXPORT creating period=${period.fileToken} start=$startEpochSeconds " +
                         "end=$endEpochSeconds minute=${minuteHealth.size} granular=${granularHeartRate.size} " +
-                        "ppi=${beatToBeat.size} sleepCapture=${sleepCapture.size} overlays=${overlays.size}"
+                        "ppi=${beatToBeat.size} sleepCapture=${sleepCapture.size} hrv=${overnightHrv.size} " +
+                            "overlays=${overlays.size}"
                 }
 
                 ZipFile(File(destination.toString()), mode = FileMode.Write).use { zip ->
@@ -124,6 +128,12 @@ class HealthDataExporter(
                         rows = sleepCapture.iterator(),
                         formatter = HealthDataExportCsv::sleepCaptureRow,
                     )
+                    zip.addCsvEntry(
+                        name = OVERNIGHT_HRV_FILE,
+                        header = HealthDataExportCsv.OVERNIGHT_HRV_HEADER,
+                        rows = overnightHrv.iterator(),
+                        formatter = HealthDataExportCsv::overnightHrvRow,
+                    )
                     zip.addSingleTextEntry(
                         MANIFEST_FILE,
                         HealthDataExportCsv.manifest(
@@ -134,6 +144,7 @@ class HealthDataExporter(
                             granularHeartRateRecords = granularHeartRate.size,
                             beatToBeatRecords = beatToBeat.size,
                             sleepCaptureRecords = sleepCapture.size,
+                            overnightHrvRecords = overnightHrv.size,
                             overlayRecords = overlays.size,
                         ),
                     )
@@ -158,6 +169,7 @@ class HealthDataExporter(
                     granularHeartRateRecords = granularHeartRate.size,
                     beatToBeatRecords = beatToBeat.size,
                     sleepCaptureRecords = sleepCapture.size,
+                    overnightHrvRecords = overnightHrv.size,
                     overlayRecords = overlays.size,
                 )
             } catch (error: Throwable) {
@@ -208,6 +220,7 @@ class HealthDataExporter(
         const val OVERLAYS_FILE = "sleep_and_activity.csv"
         const val BEAT_TO_BEAT_FILE = "beat_to_beat.csv"
         const val SLEEP_CAPTURE_FILE = "sleep_capture.csv"
+        const val OVERNIGHT_HRV_FILE = "overnight_hrv_sdnn.csv"
         const val MANIFEST_FILE = "manifest.json"
         const val README_FILE = "README.txt"
     }
@@ -231,6 +244,12 @@ internal object HealthDataExportCsv {
     const val SLEEP_CAPTURE_HEADER =
         "timestamp_utc,epoch_seconds,capture_session_id,sequence,sample_type,value,quality,flags," +
             "received_at_utc,received_at_epoch_seconds,record_id,source"
+    const val OVERNIGHT_HRV_HEADER =
+        "window_start_utc,window_start_epoch_seconds,window_end_utc,window_end_epoch_seconds," +
+            "capture_session_id,sdnn_milliseconds,source_ppi_sample_count," +
+            "quality_accepted_sample_count,artifact_rejected_sample_count,quality_coverage_percent," +
+            "temporal_coverage_percent,algorithm_version,calculated_at_utc," +
+            "calculated_at_epoch_seconds,exported_to_apple_health,record_id"
 
     fun minuteHealthRow(row: HealthDataEntity): String = csvRow(
         timestamp(row.timestamp), row.timestamp, row.steps, row.orientation, row.intensity,
@@ -258,6 +277,15 @@ internal object HealthDataExportCsv {
         "system_activity_sleep_capture",
     )
 
+    fun overnightHrvRow(row: OvernightHrvEntity): String = csvRow(
+        timestamp(row.windowStartEpochSeconds), row.windowStartEpochSeconds,
+        timestamp(row.windowEndEpochSeconds), row.windowEndEpochSeconds, row.sessionId,
+        row.sdnnMilliseconds, row.sourcePpiSampleCount, row.qualityAcceptedSampleCount,
+        row.artifactRejectedSampleCount, row.qualityCoveragePercent, row.temporalCoveragePercent,
+        row.algorithmVersion, timestamp(row.calculatedAtEpochSeconds), row.calculatedAtEpochSeconds,
+        row.exportedToAppleHealth, row.recordId,
+    )
+
     fun overlayRow(row: OverlayDataEntity): String {
         val end = row.startTime + row.duration
         return csvRow(
@@ -275,10 +303,11 @@ internal object HealthDataExportCsv {
         granularHeartRateRecords: Int,
         beatToBeatRecords: Int,
         sleepCaptureRecords: Int,
+        overnightHrvRecords: Int,
         overlayRecords: Int,
     ): String = """
         {
-          "format_version": 1,
+          "format_version": 2,
           "period": "${period.fileToken}",
           "range_start_utc": "${timestamp(startEpochSeconds)}",
           "range_end_utc_exclusive": "${timestamp(endEpochSeconds)}",
@@ -288,7 +317,9 @@ internal object HealthDataExportCsv {
           "beat_to_beat_records": $beatToBeatRecords,
           "beat_to_beat_status": "accepted_ppi_from_builtin_workout",
           "sleep_capture_records": $sleepCaptureRecords,
-          "sleep_capture_status": "raw_ppi_bpm_quality_and_30_second_motion_inputs"
+          "sleep_capture_status": "raw_ppi_bpm_quality_and_30_second_motion_inputs",
+          "overnight_hrv_sdnn_records": $overnightHrvRecords,
+          "overnight_hrv_status": "five_minute_quality_filtered_sdnn_aggregates"
         }
     """.trimIndent() + "\n"
 
@@ -336,6 +367,11 @@ internal object HealthDataExportCsv {
           diagnostics. PPI timestamps are watch receipt seconds, not invented millisecond beats.
           This file is local raw data; it does not assert sleep stages or write PPI directly to
           Apple Health.
+
+        overnight_hrv_sdnn.csv
+          Five-minute SDNN values calculated locally from completed overnight PPI sessions. Each
+          row retains its source session, accepted/rejected count, coverage checks and algorithm
+          version. It is the aggregate eligible for Apple Health HRV export; it is not RMSSD.
 
         manifest.json
           Machine-readable export range, record counts, and beat-to-beat availability.

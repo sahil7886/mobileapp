@@ -29,6 +29,7 @@ import io.rebble.libpebblecommon.database.entity.HRMonitoringInterval
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
+import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.database.entity.HealthGender
 import io.rebble.libpebblecommon.database.entity.MuteState
@@ -497,6 +498,25 @@ class FakeLibPebble : LibPebble {
     ): List<SleepCaptureSampleEntity> = emptyList()
 
     override suspend fun countSleepCaptureSamples(): Int = 0
+
+    override suspend fun getCompletedSleepCaptureSessionIdsWithoutHrv(algorithmVersion: Int): List<Long> =
+        emptyList()
+
+    override suspend fun getSleepCaptureSamplesForSession(sessionId: Long): List<SleepCaptureSampleEntity> =
+        emptyList()
+
+    override suspend fun insertOvernightHrv(data: List<OvernightHrvEntity>): Int = data.size
+
+    override suspend fun getPendingOvernightHrv(limit: Int): List<OvernightHrvEntity> = emptyList()
+
+    override suspend fun markOvernightHrvExported(recordIds: List<String>): Int = recordIds.size
+
+    override suspend fun countPendingOvernightHrv(): Int = 0
+
+    override suspend fun countExportedOvernightHrv(): Int = 0
+
+    override suspend fun getOvernightHrvForRange(start: Long, end: Long): List<OvernightHrvEntity> =
+        emptyList()
 
     override suspend fun getOverlayEntriesAfter(
         afterTimestamp: Long,

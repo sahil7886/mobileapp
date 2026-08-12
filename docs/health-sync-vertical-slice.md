@@ -1,4 +1,4 @@
-# Pebble Time 2 → Apple Health: heart-rate export and workout capture
+# Pebble Time 2 → Apple Health: heart rate, workouts, and overnight SDNN
 
 ## Scope
 
@@ -42,8 +42,10 @@ it writes a compact movement-energy summary for each 30-second epoch. All four r
 sequence IDs, completion records, and an explicit dropped-record count.
 
 The existing Pebble motion-derived sleep/deep-sleep overlays are intentionally retained. The new
-stream is raw classifier input and does not yet replace those labels or create new Apple Health
-sleep-stage/HRV samples.
+stream is raw classifier input and does not replace those labels or create new Apple Health sleep
+stages. Once a capture session carries its terminal completion record, the phone quality-filters
+the stored PPI intervals into non-overlapping five-minute **SDNN** windows and writes only those
+aggregates to Apple Health. Raw PPI remains local for export and diagnostics.
 
 `watchapps/health-capture` remains a separate prototype and diagnostic tool. It is not required for
 the built-in Workout path and does not create the normal Pebble activity session.
@@ -65,9 +67,16 @@ recording interval; it must be verified on real Time 2 hardware.
 | Extra metadata | External UUID plus Pebble sequence timestamp and device label |
 | Duplicate behavior | Minute records retain their timestamp identity; detailed rows use persistent workout + sequence IDs. The native workout and every point carry stable sync metadata; validate an interrupted retry on a physical iPhone before treating it as proven. |
 
-The app requests only sharing permission for the vertical-slice heart-rate writer. Therefore it
-does not inspect other Apple Health sources and the export screen truthfully reports conflicts as
-“Not checked”.
+For overnight HRV, the writer uses `HKQuantityTypeIdentifierHeartRateVariabilitySDNN` with
+`HKUnit.secondUnitWithMetricPrefix(HKMetricPrefixMilli)` and a five-minute start/end interval.
+Every aggregate carries an algorithm version plus an `HKSyncIdentifier`/`HKSyncVersion` pair, so
+HealthKit can reconcile a replay by stable identity. HealthKit assigns this app as the source; the
+client does not claim to be an Apple Watch. The local `overnight_hrv` row retains the PPI count,
+quality coverage, artifact rejects, temporal coverage, calculation window, and algorithm version.
+
+The app requests only sharing permission for the heart-rate, workout, and HRV writers. Therefore
+it does not inspect other Apple Health sources and the export screen truthfully reports conflicts
+as “Not checked”.
 
 ## Local Pebble data export
 
@@ -82,6 +91,7 @@ window. The ZIP is deliberately split into small, interoperable CSVs instead of 
 | `sleep_and_activity.csv` | Every persisted overlay interval overlapping the range: sleep, deep sleep, naps, walking, running, and open workouts. |
 | `beat_to_beat.csv` | Every accepted PPI/RR interval received from the built-in Workout, including Workout/sequence ID, timestamp, milliseconds, sensor quality, flags, and receipt time. A final zero-interval row is the exact Workout-stop commit marker. |
 | `sleep_capture.csv` | Overnight system Activity capture records: PPI, BPM and quality, 30-second movement energy, and session/drop diagnostics. PPI timestamps have the watch API's second precision; the file does not claim millisecond beat timestamps or sleep stages. |
+| `overnight_hrv_sdnn.csv` | Quality-filtered, five-minute overnight SDNN calculations, including source session, PPI/quality coverage, artifact rejects, algorithm version, and Apple Health export state. It never contains RMSSD. |
 | `manifest.json` / `README.txt` | Record counts, exact UTC bounds, field definitions, and availability caveats. |
 
 The archive represents data that the phone received from Pebble and stored locally. It is not an
@@ -102,8 +112,8 @@ Apple Health export and cannot include watch-sensor values that Pebble's public 
    session workflow intentionally does not save sub-minute workouts. Stop it normally. The watch
    retains the detailed log locally whether or not the phone was connected.
 5. Reconnect the companion and allow DataLogging to complete. Open **Health → Apple Health export
-   status**, choose **Allow Apple Health export**, and grant both Heart Rate and Workout sharing.
-   Press **Sync now**.
+   status**, choose **Allow Apple Health export**, and grant Heart Rate, Workout, and **Heart Rate
+   Variability** sharing. Press **Sync now**.
 6. Check the status page: platform is available, permission is allowed, **Pending workout HR
    records** becomes zero, failed records is zero, and the last successful sync advances.
 7. In Apple Health, confirm one Pebble-sourced Workout at the correct start/end times, then inspect
@@ -130,11 +140,13 @@ second. Measure actual timestamp spacing, battery loss per hour, sensor quality,
 counts, and watch temperature before calling one-second sampling production-safe.
 
 Apple Health's HRV type is SDNN in milliseconds. The Time 2 PPI stream is **not** written to Apple
-Health directly: raw PPI is an input series, while HealthKit accepts an SDNN aggregate. This slice
-now captures raw PPI during the existing motion-derived sleep interval, but it must not yet be
-called overnight HRV. First validate an overnight, quality-controlled collection policy and a
-documented SDNN algorithm. Do not write RMSSD values into the SDNN type or claim Bevel
-compatibility until a physical Apple Health + Bevel test passes.
+Health directly: raw PPI is an input series, while HealthKit accepts an SDNN aggregate. The phone
+now calculates algorithm-versioned five-minute SDNN windows only from *completed* overnight
+sessions. A window needs at least 180 intervals, at least 80% watch-quality/range acceptance, at
+least 75% interval-time coverage, and rejects an interval that jumps more than 20% from the last
+accepted interval. The standard deviation uses the accepted-window population denominator. This
+is a conservative PPG-derived estimate, not an ECG rhythm classifier. Do not write RMSSD values
+into the SDNN type or claim Bevel compatibility until a physical Apple Health + Bevel test passes.
 
 ### Overnight capture test for tonight
 
@@ -148,9 +160,17 @@ compatibility until a physical Apple Health + Bevel test passes.
 3. Record the battery percentage immediately before sleep and after waking. Keep the companion
    disconnected for part of the night if desired; the watch must retain data locally either way.
 4. After noon, reconnect the iPhone fork. In **Health → Apple Health export status**, refresh the
-   status and note **Overnight classifier inputs**. Then use the 7-day ZIP export and inspect
-   `sleep_capture.csv`: it should contain `session`, `ppi`, `bpm`, and `motion_epoch` rows.
-5. Compare the same date's existing `sleep_and_activity.csv` motion-derived deep/light labels with
+   status and note **Overnight classifier inputs**, **Pending overnight SDNN records**, and
+   **Apple Health SDNN records**. Then use the 7-day ZIP export and inspect `sleep_capture.csv`:
+   it should contain `session`, `ppi`, `bpm`, and `motion_epoch` rows. If the quality/coverage
+   gates accepted a window, `overnight_hrv_sdnn.csv` will contain an SDNN aggregate. A terminal
+   session record that reports dropped watch-buffer rows intentionally suppresses HRV export.
+5. In Apple Health, check Browse → Heart → Heart Rate Variability and confirm the Pebble-sourced
+   SDNN sample has the correct five-minute window and millisecond unit. Re-run **Sync now** after
+   force-closing the app and confirm it does not create a second record. Only then set Bevel to
+   Apple Health SDNN and test its display; this repository does not claim Bevel compatibility
+   until that physical test succeeds.
+6. Compare the same date's existing `sleep_and_activity.csv` motion-derived deep/light labels with
    the new raw inputs. For this first test, compare capture coverage and battery use—not stage
    accuracy. A stage classifier has not yet been trained or validated.
 
@@ -160,7 +180,7 @@ compatibility until a physical Apple Health + Bevel test passes.
 | --- | --- | --- | --- |
 | Heart rate | `HKQuantityTypeIdentifierHeartRate` | `count/min`, point time | Implemented in this slice |
 | Resting heart rate | `HKQuantityTypeIdentifierRestingHeartRate` | `count/min`, point time | Export only an algorithmically stable, sleep-bounded value |
-| HRV | `HKQuantityTypeIdentifierHeartRateVariabilitySDNN` | milliseconds, point time | Export SDNN only; RMSSD is not an interchangeable value |
+| HRV | `HKQuantityTypeIdentifierHeartRateVariabilitySDNN` | milliseconds, five-minute interval | Implemented for completed, quality-gated overnight SDNN only; RMSSD is not interchangeable and Bevel validation remains required |
 | Sleep | `HKCategoryTypeIdentifierSleepAnalysis` | interval category samples | Preserve session/stage boundaries and attach time-zone metadata |
 | Workout | `HKWorkout` | built-in Workout start + terminal stop timestamp | Implemented with `HKWorkoutBuilder` and detailed BPM samples; physical retry/Bevel validation remains required |
 

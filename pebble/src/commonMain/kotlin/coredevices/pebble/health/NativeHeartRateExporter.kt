@@ -72,6 +72,32 @@ data class WorkoutHeartRateExportWriteResult(
     val writtenHeartRateRecords: Int,
 )
 
+/** One quality-filtered, five-minute SDNN aggregate from an overnight Pebble PPI session. */
+data class OvernightHrvExport(
+    /** Stable local identity, persisted with the calculation provenance. */
+    val sourceRecordId: String,
+    val windowStartEpochSeconds: Long,
+    val windowEndEpochSeconds: Long,
+    /** HealthKit's HRV unit: milliseconds. This is SDNN, never RMSSD. */
+    val sdnnMilliseconds: Double,
+    val algorithmVersion: Int,
+) {
+    init {
+        require(sourceRecordId.isNotBlank())
+        require(windowStartEpochSeconds > 0)
+        require(windowEndEpochSeconds > windowStartEpochSeconds)
+        require(sdnnMilliseconds.isFinite() && sdnnMilliseconds >= 0.0)
+        require(algorithmVersion > 0)
+    }
+
+    val syncIdentifier: String
+        get() = "coredevices.pebble.health.hrv.sdnn.v1.$sourceRecordId"
+}
+
+data class OvernightHrvExportWriteResult(
+    val writtenRecords: Int,
+)
+
 /**
  * Platform-native writer for the small set of records where the platform API has guarantees the
  * KMP abstraction cannot express.  On iOS this writes point samples with HealthKit's sync
@@ -87,6 +113,9 @@ internal expect class NativeHeartRateExporter() {
     /** Apple Health sharing state for workouts that contain detailed heart-rate samples. */
     fun workoutAuthorization(): HealthWriteAuthorization
 
+    /** Apple Health sharing state for derived SDNN HRV values. */
+    fun hrvAuthorization(): HealthWriteAuthorization
+
     suspend fun requestAuthorization(): Result<Boolean>
 
     suspend fun write(samples: List<HeartRateExportSample>): Result<HeartRateExportWriteResult>
@@ -95,4 +124,9 @@ internal expect class NativeHeartRateExporter() {
     suspend fun writeWorkout(
         workout: WorkoutHeartRateExport,
     ): Result<WorkoutHeartRateExportWriteResult>
+
+    /** Writes quality-filtered SDNN aggregates, never raw PPI/RR intervals. */
+    suspend fun writeOvernightHrv(
+        samples: List<OvernightHrvExport>,
+    ): Result<OvernightHrvExportWriteResult>
 }

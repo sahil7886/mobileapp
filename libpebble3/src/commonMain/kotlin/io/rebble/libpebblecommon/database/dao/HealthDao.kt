@@ -8,6 +8,7 @@ import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -34,6 +35,10 @@ interface HealthDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertSleepCaptureSamples(data: List<SleepCaptureSampleEntity>): List<Long>
 
+    /** Replaces the same logical window only when a newer algorithm version is calculated. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOvernightHrv(data: List<OvernightHrvEntity>): List<Long>
+
     @Query("""
         SELECT * FROM sleep_capture_sample
         WHERE timestampEpochSeconds >= :start AND timestampEpochSeconds < :end
@@ -41,8 +46,62 @@ interface HealthDao {
         """)
     suspend fun getSleepCaptureSamplesForRange(start: Long, end: Long): List<SleepCaptureSampleEntity>
 
+    @Query("""
+        SELECT * FROM sleep_capture_sample
+        WHERE sessionId = :sessionId
+        ORDER BY timestampEpochSeconds ASC, sequence ASC, recordId ASC
+        """)
+    suspend fun getSleepCaptureSamplesForSession(sessionId: Long): List<SleepCaptureSampleEntity>
+
+    /**
+     * A terminal COMPLETE record without a watch-buffer drop is required before calculation, so a
+     * Bluetooth retry or Datalogging overflow cannot make a partial night look like a finished
+     * HRV window. Sessions without any qualifying windows are harmlessly reconsidered later.
+     */
+    @Query("""
+        SELECT DISTINCT capture.sessionId FROM sleep_capture_sample AS capture
+        WHERE capture.sampleType = 4
+          AND (capture.flags & 8) != 0
+          AND (capture.flags & 16) = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM overnight_hrv AS hrv
+              WHERE hrv.sessionId = capture.sessionId
+                AND hrv.algorithmVersion = :algorithmVersion
+          )
+        ORDER BY capture.sessionId ASC
+        """)
+    suspend fun getCompletedSleepCaptureSessionIdsWithoutHrv(algorithmVersion: Int): List<Long>
+
     @Query("SELECT COUNT(*) FROM sleep_capture_sample")
     suspend fun countSleepCaptureSamples(): Int
+
+    @Query("""
+        SELECT * FROM overnight_hrv
+        WHERE exportedToAppleHealth = 0
+        ORDER BY windowStartEpochSeconds ASC, recordId ASC
+        LIMIT :limit
+        """)
+    suspend fun getPendingOvernightHrv(limit: Int): List<OvernightHrvEntity>
+
+    @Query("""
+        UPDATE overnight_hrv
+        SET exportedToAppleHealth = 1
+        WHERE recordId IN (:recordIds)
+        """)
+    suspend fun markOvernightHrvExported(recordIds: List<String>): Int
+
+    @Query("SELECT COUNT(*) FROM overnight_hrv WHERE exportedToAppleHealth = 0")
+    suspend fun countPendingOvernightHrv(): Int
+
+    @Query("SELECT COUNT(*) FROM overnight_hrv WHERE exportedToAppleHealth = 1")
+    suspend fun countExportedOvernightHrv(): Int
+
+    @Query("""
+        SELECT * FROM overnight_hrv
+        WHERE windowStartEpochSeconds >= :start AND windowStartEpochSeconds < :end
+        ORDER BY windowStartEpochSeconds ASC, recordId ASC
+        """)
+    suspend fun getOvernightHrvForRange(start: Long, end: Long): List<OvernightHrvEntity>
 
     @Query("""
         SELECT * FROM beat_to_beat
