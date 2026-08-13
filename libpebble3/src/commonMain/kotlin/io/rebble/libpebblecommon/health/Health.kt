@@ -190,6 +190,9 @@ class Health(
     override suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity> =
         healthDao.getPendingGranularHeartRate(limit)
 
+    override suspend fun getPendingBuiltinWorkoutIds(limit: Int): List<Long> =
+        healthDao.getPendingBuiltinWorkoutIds(limit)
+
     override suspend fun getGranularHeartRateForRange(
         start: Long,
         end: Long,

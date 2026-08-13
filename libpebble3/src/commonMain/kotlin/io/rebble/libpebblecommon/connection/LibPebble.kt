@@ -159,6 +159,9 @@ interface HealthDataApi {
     /** High-resolution records written by the optional Health Capture worker and not yet exported. */
     suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity>
 
+    /** Pending built-in Workout IDs, independent of the current raw-record pagination window. */
+    suspend fun getPendingBuiltinWorkoutIds(limit: Int): List<Long>
+
     /**
      * Every high-resolution worker record in the range, including raw-only diagnostics that are
      * intentionally ineligible for Apple Health export.

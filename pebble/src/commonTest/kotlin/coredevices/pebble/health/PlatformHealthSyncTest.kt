@@ -8,6 +8,20 @@ import kotlin.test.assertEquals
 class PlatformHealthSyncTest {
 
     @Test
+    fun correctedWorkout_exportsBeforeOlderIncompleteWorkout() {
+        val olderIncompleteWorkout = 100L
+        val correctedLaterWorkout = 200L
+
+        assertEquals(
+            listOf(correctedLaterWorkout, olderIncompleteWorkout),
+            prioritizeBuiltinWorkoutExports(
+                workoutIds = listOf(olderIncompleteWorkout, correctedLaterWorkout),
+                hasEndCorrection = { it == correctedLaterWorkout },
+            ),
+        )
+    }
+
+    @Test
     fun sleepContainerWithDeepSubintervals_emitsAlternatingLightAndDeep() {
         // 8h Sleep container with two DeepSleep periods nested inside (the reporter scenario).
         val intervals = computeSleepStageIntervals(

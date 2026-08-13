@@ -26,6 +26,8 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Clock
@@ -44,6 +46,7 @@ class PlatformHealthSync(
 ) {
     private val logger = Logger.withTag("PlatformHealthSync")
     private val nativeHeartRateExporter = NativeHeartRateExporter()
+    private val exportMutex = Mutex()
 
     private val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing
@@ -67,6 +70,7 @@ class PlatformHealthSync(
         /** Bound a background pass; remaining records stay durably pending for the next sync. */
         private const val MAX_GRANULAR_BATCHES_PER_SYNC = 10
         private const val MAX_GRANULAR_RECORDS_PER_BATCH = 100
+        private const val MAX_BUILTIN_WORKOUTS_PER_SYNC = 32
         private const val MAX_OVERNIGHT_HRV_BATCHES_PER_SYNC = 10
         private const val MAX_OVERNIGHT_HRV_RECORDS_PER_BATCH = 100
         private const val BUILTIN_WORKOUT_LOOKUP_WINDOW_SECONDS = 24 * 60 * 60L
@@ -155,18 +159,20 @@ class PlatformHealthSync(
         if (!tracker.enabled.value) return
         if (!_syncing.compareAndSet(expect = false, update = true)) return
         try {
-            if (!hasPermission()) {
-                logger.w { "No health sync permission during sync attempt!" }
-                tracker.setEnabled(false)
-                return
+            exportMutex.withLock {
+                if (!hasPermission()) {
+                    logger.w { "No health sync permission during sync attempt!" }
+                    tracker.setEnabled(false)
+                    return
+                }
+                syncSteps()
+                syncHeartRate()
+                syncGranularWorkoutHeartRate()
+                syncOvernightHrv()
+                syncOverlays()
+                refreshExportStatus()
+                logger.d { "Health platform sync completed" }
             }
-            syncSteps()
-            syncHeartRate()
-            syncGranularWorkoutHeartRate()
-            syncOvernightHrv()
-            syncOverlays()
-            refreshExportStatus()
-            logger.d { "Health platform sync completed" }
         } catch (e: Exception) {
             logger.e(e) { "Health platform sync failed" }
         } finally {
@@ -219,19 +225,24 @@ class PlatformHealthSync(
      */
     suspend fun correctBuiltinWorkoutEnd(workoutId: Long, endEpochSeconds: Long): Result<Unit> =
         runCatching {
-            val workout = recentBuiltinWorkouts().firstOrNull { it.workoutId == workoutId }
-                ?: error("This workout is no longer available on the phone")
-            require(endEpochSeconds > workoutId) { "End time must be after the workout started" }
-            require(endEpochSeconds <= workout.recordedEndEpochSeconds) {
-                "End time cannot be after the watch's recorded stop"
+            exportMutex.withLock {
+                val workout = recentBuiltinWorkouts().firstOrNull { it.workoutId == workoutId }
+                    ?: error("This workout is no longer available on the phone")
+                require(endEpochSeconds > workoutId) { "End time must be after the workout started" }
+                require(endEpochSeconds <= workout.recordedEndEpochSeconds) {
+                    "End time cannot be after the watch's recorded stop"
+                }
+                require(endEpochSeconds - workoutId <= MAX_WORKOUT_END_CORRECTION_SECONDS) {
+                    "Workout correction is outside the supported range"
+                }
+                check(hasPermission()) { "Apple Health export is not currently allowed" }
+                tracker.setWorkoutEndOverride(workoutId, endEpochSeconds)
+                healthDataApi.markBuiltinWorkoutPending(workoutId)
+                check(syncBuiltInWorkoutHeartRate(workoutId)) {
+                    "The corrected workout is still missing required watch data; it remains queued"
+                }
+                refreshExportStatus()
             }
-            require(endEpochSeconds - workoutId <= MAX_WORKOUT_END_CORRECTION_SECONDS) {
-                "Workout correction is outside the supported range"
-            }
-            tracker.setWorkoutEndOverride(workoutId, endEpochSeconds)
-            healthDataApi.markBuiltinWorkoutPending(workoutId)
-            sync()
-            refreshExportStatus()
         }
 
     /**
@@ -446,18 +457,22 @@ class PlatformHealthSync(
                 madeProgress = true
             }
 
-            val builtInWorkoutIds = records
-                .asSequence()
-                .filter { BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId) }
-                .map { it.workoutId }
-                .distinct()
-                .toList()
+            // Select workouts independently from this page of raw samples. A correction is
+            // deliberately first: it has an explicit end bound and should not be starved by an
+            // earlier workout whose completion packet never reached the phone.
+            val builtInWorkoutIds = prioritizeBuiltinWorkoutExports(
+                healthDataApi.getPendingBuiltinWorkoutIds(MAX_BUILTIN_WORKOUTS_PER_SYNC),
+                hasEndCorrection = { tracker.workoutEndOverride(it) != null },
+            )
             for (workoutId in builtInWorkoutIds) {
                 if (syncBuiltInWorkoutHeartRate(workoutId)) madeProgress = true
             }
 
             if (!madeProgress) {
-                logger.d { "HEALTH_EXPORT_BUILTIN_WORKOUT waiting for its session or completion record" }
+                logger.d {
+                    "HEALTH_EXPORT_BUILTIN_WORKOUT waiting candidates=$builtInWorkoutIds; " +
+                        "an incomplete workout will not block later candidates"
+                }
                 refreshExportStatus()
                 return
             }
@@ -816,6 +831,14 @@ data class BuiltinWorkoutCorrection(
 ) {
     val effectiveEndEpochSeconds: Long get() = correctedEndEpochSeconds ?: recordedEndEpochSeconds
 }
+
+/** Corrections are immediately exportable, so they must not sit behind incomplete older rows. */
+internal fun prioritizeBuiltinWorkoutExports(
+    workoutIds: List<Long>,
+    hasEndCorrection: (Long) -> Boolean,
+): List<Long> = workoutIds.sortedWith(
+    compareByDescending<Long> { hasEndCorrection(it) }.thenBy { it },
+)
 
 // Pebble's overlay model: Sleep/Nap are container overlays spanning the whole session with
 // DeepSleep/DeepNap sub-overlays nested inside them. Carve the Deep periods out of each Light

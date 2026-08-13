@@ -476,6 +476,8 @@ class FakeLibPebble : LibPebble {
 
     override suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity> = emptyList()
 
+    override suspend fun getPendingBuiltinWorkoutIds(limit: Int): List<Long> = emptyList()
+
     override suspend fun getGranularHeartRateForRange(
         start: Long,
         end: Long,

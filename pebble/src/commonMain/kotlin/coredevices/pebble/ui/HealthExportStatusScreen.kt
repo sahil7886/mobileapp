@@ -50,6 +50,8 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
     var workouts by remember { mutableStateOf<List<BuiltinWorkoutCorrection>>(emptyList()) }
     var showWorkoutPicker by remember { mutableStateOf(false) }
     var selectedWorkout by remember { mutableStateOf<BuiltinWorkoutCorrection?>(null) }
+    var correctionError by remember { mutableStateOf<String?>(null) }
+    var correctingWorkoutId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(Unit) {
         topBarParams.title("Apple Health Export")
@@ -123,13 +125,25 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
     selectedWorkout?.let { workout ->
         WorkoutEndCorrectionDialog(
             workout = workout,
-            onDismiss = { selectedWorkout = null },
+            errorMessage = correctionError,
+            isSubmitting = correctingWorkoutId == workout.workoutId,
+            onDismiss = {
+                selectedWorkout = null
+                correctionError = null
+            },
             onConfirm = { endEpochSeconds ->
                 scope.launch {
-                    sync.correctBuiltinWorkoutEnd(workout.workoutId, endEpochSeconds)
-                    sync.refreshExportStatus()
-                    workouts = sync.recentBuiltinWorkouts()
-                    selectedWorkout = null
+                    if (correctingWorkoutId != null) return@launch
+                    correctionError = null
+                    correctingWorkoutId = workout.workoutId
+                    val result = sync.correctBuiltinWorkoutEnd(workout.workoutId, endEpochSeconds)
+                    correctingWorkoutId = null
+                    result.onSuccess {
+                        workouts = sync.recentBuiltinWorkouts()
+                        selectedWorkout = null
+                    }.onFailure { error ->
+                        correctionError = error.message ?: "Could not update the workout"
+                    }
                 }
             },
         )
@@ -145,6 +159,7 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
                         TextButton(
                             onClick = {
                                 showWorkoutPicker = false
+                                correctionError = null
                                 selectedWorkout = workout
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -165,6 +180,8 @@ fun HealthExportStatusScreen(topBarParams: TopBarParams) {
 @Composable
 private fun WorkoutEndCorrectionDialog(
     workout: BuiltinWorkoutCorrection,
+    errorMessage: String?,
+    isSubmitting: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (Long) -> Unit,
 ) {
@@ -192,15 +209,20 @@ private fun WorkoutEndCorrectionDialog(
                     "Enter 1–$maxMinutes minutes. Apple Health will be updated to this duration.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                errorMessage?.let { error ->
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                }
             }
         },
         confirmButton = {
             TextButton(
-                enabled = valid,
+                enabled = valid && !isSubmitting,
                 onClick = { onConfirm(workout.workoutId + requireNotNull(requestedMinutes) * 60) },
-            ) { Text("Update Apple Health") }
+            ) { Text(if (isSubmitting) "Updating…" else "Update Apple Health") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = {
+            TextButton(enabled = !isSubmitting, onClick = onDismiss) { Text("Cancel") }
+        },
     )
 }
 

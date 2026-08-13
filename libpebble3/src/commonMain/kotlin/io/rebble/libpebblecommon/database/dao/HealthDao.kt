@@ -132,6 +132,21 @@ interface HealthDao {
     suspend fun getPendingGranularHeartRate(limit: Int): List<GranularHeartRateEntity>
 
     /**
+     * Pending built-in Workout IDs are selected independently from the raw-record page. An older
+     * incomplete workout must never prevent a later completed or user-corrected workout from
+     * reaching Apple Health.
+     */
+    @Query("""
+        SELECT DISTINCT workoutId FROM granular_heart_rate
+        WHERE exportedToAppleHealth = 0
+          AND filteredBpm BETWEEN 1 AND 300
+          AND recordId LIKE 'builtin-workout-v1:%'
+        ORDER BY workoutId ASC
+        LIMIT :limit
+        """)
+    suspend fun getPendingBuiltinWorkoutIds(limit: Int): List<Long>
+
+    /**
      * Includes both filtered and raw-only worker records.  The latter cannot be written to
      * HealthKit as a heart-rate measurement, but must remain available to a user data export.
      */

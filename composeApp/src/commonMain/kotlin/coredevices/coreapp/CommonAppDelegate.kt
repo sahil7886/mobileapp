@@ -60,10 +60,9 @@ class CommonAppDelegate(
     private val syncInProgress = MutableStateFlow(false)
 
     private fun initCactus() {
-        val modelProvider = try {
-            org.koin.mp.KoinPlatform.getKoin().get<CactusModelPathProvider>()
-        } catch (e: Exception) {
-            logger.w(e) { "Cactus model provider not available" }
+        val modelProvider = org.koin.mp.KoinPlatform.getKoin().getOrNull<CactusModelPathProvider>()
+        if (modelProvider == null) {
+            logger.w { "Cactus model provider not available; local transcription is disabled" }
             return
         }
         try {
