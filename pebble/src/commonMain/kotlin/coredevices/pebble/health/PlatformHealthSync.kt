@@ -70,6 +70,7 @@ class PlatformHealthSync(
         private const val MAX_OVERNIGHT_HRV_BATCHES_PER_SYNC = 10
         private const val MAX_OVERNIGHT_HRV_RECORDS_PER_BATCH = 100
         private const val BUILTIN_WORKOUT_LOOKUP_WINDOW_SECONDS = 24 * 60 * 60L
+        private const val MAX_WORKOUT_END_CORRECTION_SECONDS = 12 * 60 * 60L
         private val BUILTIN_WORKOUT_OVERLAY_TYPES = setOf(
             OverlayType.Walk.value,
             OverlayType.Run.value,
@@ -195,6 +196,43 @@ class PlatformHealthSync(
             exportedOvernightHrvRecords = exportedOvernightHrvRecords,
         )
     }
+
+    /** Recent watch workouts that can have an accidental late stop corrected before export. */
+    suspend fun recentBuiltinWorkouts(): List<BuiltinWorkoutCorrection> =
+        healthDataApi.getRecentBuiltinWorkoutSummaries(limit = 12)
+            .mapNotNull { summary ->
+                val recordedEnd = summary.terminalEpochSeconds.takeIf { it > summary.workoutId }
+                    ?: summary.lastSampleEpochSeconds.takeIf { it > summary.workoutId }
+                    ?: return@mapNotNull null
+                BuiltinWorkoutCorrection(
+                    workoutId = summary.workoutId,
+                    recordedEndEpochSeconds = recordedEnd,
+                    correctedEndEpochSeconds = tracker.workoutEndOverride(summary.workoutId),
+                    recordCount = summary.recordCount,
+                    pendingRecordCount = summary.pendingRecordCount,
+                )
+            }
+
+    /**
+     * Uses an earlier, user-confirmed finish time when rebuilding the app-owned HealthKit workout.
+     * Raw Pebble records remain locally available; only the Apple Health workout is trimmed.
+     */
+    suspend fun correctBuiltinWorkoutEnd(workoutId: Long, endEpochSeconds: Long): Result<Unit> =
+        runCatching {
+            val workout = recentBuiltinWorkouts().firstOrNull { it.workoutId == workoutId }
+                ?: error("This workout is no longer available on the phone")
+            require(endEpochSeconds > workoutId) { "End time must be after the workout started" }
+            require(endEpochSeconds <= workout.recordedEndEpochSeconds) {
+                "End time cannot be after the watch's recorded stop"
+            }
+            require(endEpochSeconds - workoutId <= MAX_WORKOUT_END_CORRECTION_SECONDS) {
+                "Workout correction is outside the supported range"
+            }
+            tracker.setWorkoutEndOverride(workoutId, endEpochSeconds)
+            healthDataApi.markBuiltinWorkoutPending(workoutId)
+            sync()
+            refreshExportStatus()
+        }
 
     /**
      * Calculates only after PebbleOS delivered a terminal sleep-capture record, then sends
@@ -443,20 +481,27 @@ class PlatformHealthSync(
         val terminal = detail
             .filter { it.flags and BuiltinWorkoutHeartRateProtocol.FLAG_WORKOUT_COMPLETE != 0 }
             .maxByOrNull { it.timestampEpochSeconds }
+        val recordedEndEpochSeconds = terminal?.timestampEpochSeconds
+            ?: detail.maxOfOrNull { it.timestampEpochSeconds }
             ?: return false
         val overlay = healthDataApi.getOverlayEntriesForRange(workoutId, workoutId + 1)
             .firstOrNull {
                 it.startTime == workoutId && it.type in BUILTIN_WORKOUT_OVERLAY_TYPES
             }
+        if (overlay == null && tracker.workoutEndOverride(workoutId) == null) return false
+        if (recordedEndEpochSeconds <= workoutId) return false
+        val endEpochSeconds = tracker.workoutEndOverride(workoutId)
+            ?.takeIf { it <= recordedEndEpochSeconds }
+            ?: terminal?.timestampEpochSeconds
             ?: return false
-        if (terminal.timestampEpochSeconds <= workoutId) return false
+        if (endEpochSeconds <= workoutId) return false
 
         val samples = detail
             .asSequence()
             .filter { it.filteredBpm in 1..300 }
             .filter {
                 it.timestampEpochSeconds >= workoutId &&
-                    it.timestampEpochSeconds < terminal.timestampEpochSeconds
+                    it.timestampEpochSeconds < endEpochSeconds
             }
             .sortedWith(compareBy({ it.timestampEpochSeconds }, { it.sequence }))
             .map {
@@ -464,6 +509,7 @@ class PlatformHealthSync(
                     timestampSeconds = it.timestampEpochSeconds,
                     beatsPerMinute = it.filteredBpm,
                     sourceRecordId = it.recordId,
+                    syncVersion = tracker.workoutExportVersion(workoutId),
                 )
             }.toList()
         if (samples.isEmpty()) return false
@@ -472,7 +518,12 @@ class PlatformHealthSync(
         // detailed Datalogging session arrived late or could not be completed. Preserve that
         // normal Pebble workout and export the retained HR points by themselves instead of
         // creating a second HealthKit workout for the same activity.
-        if (overlay.startTime <= tracker.lastSyncedOverlayTimestamp) {
+        if (
+            overlay != null &&
+                overlay.startTime <= tracker.lastSyncedOverlayTimestamp &&
+                tracker.workoutEndOverride(workoutId) == null &&
+                !tracker.hasNativeWorkoutExport(workoutId)
+        ) {
             val written = writeHeartRateSamples(samples).getOrElse { error ->
                 tracker.recordHeartRateExportFailure(samples.size, error)
                 logger.e(error) {
@@ -481,7 +532,7 @@ class PlatformHealthSync(
                 return false
             }
             healthDataApi.markGranularHeartRateExported(detail.map { it.recordId })
-            tracker.recordSuccessfulHeartRateExport(terminal.timestampEpochSeconds)
+            tracker.recordSuccessfulHeartRateExport(endEpochSeconds)
             logger.w {
                 "HEALTH_EXPORT_BUILTIN_WORKOUT fallback standalone-HR saved=" +
                     "${written.writtenRecords} workout=$workoutId"
@@ -496,7 +547,7 @@ class PlatformHealthSync(
                 return false
             }
             healthDataApi.markGranularHeartRateExported(detail.map { it.recordId })
-            tracker.recordSuccessfulHeartRateExport(terminal.timestampEpochSeconds)
+            tracker.recordSuccessfulHeartRateExport(endEpochSeconds)
             logger.d {
                 "HEALTH_EXPORT_BUILTIN_WORKOUT_HR synced=${written.writtenRecords} workout=$workoutId"
             }
@@ -505,25 +556,28 @@ class PlatformHealthSync(
 
         val result = nativeHeartRateExporter.writeWorkout(
             WorkoutHeartRateExport(
-                sourceRecordId = "builtin-workout-v1:$workoutId:${overlay.type}",
-                type = when (OverlayType.fromValue(overlay.type)) {
+                sourceRecordId = "builtin-workout-v1:$workoutId:${overlay?.type ?: OverlayType.OpenWorkout.value}",
+                type = when (overlay?.let { OverlayType.fromValue(it.type) }) {
                     OverlayType.Walk -> WorkoutHeartRateExportType.Walking
                     OverlayType.Run -> WorkoutHeartRateExportType.Running
                     OverlayType.OpenWorkout -> WorkoutHeartRateExportType.Other
+                    null -> WorkoutHeartRateExportType.Other
                     else -> return false
                 },
                 startEpochSeconds = workoutId,
-                endEpochSeconds = terminal.timestampEpochSeconds,
+                endEpochSeconds = endEpochSeconds,
                 heartRateSamples = samples,
+                syncVersion = tracker.workoutExportVersion(workoutId),
             ),
         )
         return result.fold(
             onSuccess = { written ->
                 healthDataApi.markGranularHeartRateExported(detail.map { it.recordId })
-                tracker.recordSuccessfulHeartRateExport(terminal.timestampEpochSeconds)
+                tracker.recordSuccessfulHeartRateExport(endEpochSeconds)
+                tracker.markNativeWorkoutExported(workoutId)
                 logger.d {
                     "HEALTH_EXPORT_BUILTIN_WORKOUT saved=${written.writtenHeartRateRecords} " +
-                        "workout=$workoutId"
+                    "workout=$workoutId end=$endEpochSeconds"
                 }
                 true
             },
@@ -585,7 +639,8 @@ class PlatformHealthSync(
                     it.workoutId == overlay.startTime &&
                         BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId)
                 }
-                detail.hasCompletedExportableBuiltinWorkout()
+                detail.hasCompletedExportableBuiltinWorkout() ||
+                    tracker.workoutEndOverride(overlay.startTime) != null
             }
         } else {
             emptyList()
@@ -750,6 +805,17 @@ class PlatformHealthSync(
 }
 
 internal data class SleepStageInterval(val startSec: Long, val endSec: Long, val isDeep: Boolean)
+
+/** A watch workout available for an optional, local Apple Health end-time correction. */
+data class BuiltinWorkoutCorrection(
+    val workoutId: Long,
+    val recordedEndEpochSeconds: Long,
+    val correctedEndEpochSeconds: Long?,
+    val recordCount: Int,
+    val pendingRecordCount: Int,
+) {
+    val effectiveEndEpochSeconds: Long get() = correctedEndEpochSeconds ?: recordedEndEpochSeconds
+}
 
 // Pebble's overlay model: Sleep/Nap are container overlays spanning the whole session with
 // DeepSleep/DeepNap sub-overlays nested inside them. Carve the Deep periods out of each Light

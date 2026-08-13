@@ -485,6 +485,11 @@ class FakeLibPebble : LibPebble {
 
     override suspend fun countPendingGranularHeartRate(): Int = 0
 
+    override suspend fun getRecentBuiltinWorkoutSummaries(limit: Int) = emptyList<
+        io.rebble.libpebblecommon.database.dao.BuiltinWorkoutSummary>()
+
+    override suspend fun markBuiltinWorkoutPending(workoutId: Long): Int = 0
+
     override suspend fun getBeatToBeatForRange(
         start: Long,
         end: Long,

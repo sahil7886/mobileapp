@@ -7,6 +7,7 @@ import io.rebble.libpebblecommon.connection.HealthDataApi
 import io.rebble.libpebblecommon.connection.LatestHeartRate
 import io.rebble.libpebblecommon.connection.WatchManager
 import io.rebble.libpebblecommon.database.dao.HealthDao
+import io.rebble.libpebblecommon.database.dao.BuiltinWorkoutSummary
 import io.rebble.libpebblecommon.database.entity.HealthDataEntity
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
@@ -199,6 +200,12 @@ class Health(
 
     override suspend fun countPendingGranularHeartRate(): Int =
         healthDao.countPendingGranularHeartRate()
+
+    override suspend fun getRecentBuiltinWorkoutSummaries(limit: Int): List<BuiltinWorkoutSummary> =
+        healthDao.getRecentBuiltinWorkoutSummaries(limit)
+
+    override suspend fun markBuiltinWorkoutPending(workoutId: Long): Int =
+        healthDao.markBuiltinWorkoutPending(workoutId)
 
     override suspend fun getBeatToBeatForRange(
         start: Long,

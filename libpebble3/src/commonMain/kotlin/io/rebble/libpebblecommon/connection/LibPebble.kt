@@ -26,6 +26,7 @@ import io.rebble.libpebblecommon.database.dao.ContactWithCount
 import io.rebble.libpebblecommon.database.dao.DailyMovementAggregate
 import io.rebble.libpebblecommon.database.dao.HealthAggregates
 import io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity
+import io.rebble.libpebblecommon.database.dao.BuiltinWorkoutSummary
 import io.rebble.libpebblecommon.database.entity.BeatToBeatEntity
 import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
@@ -168,6 +169,12 @@ interface HealthDataApi {
     suspend fun markGranularHeartRateExported(recordIds: List<String>): Int
 
     suspend fun countPendingGranularHeartRate(): Int
+
+    /** Recent built-in Workouts, including already-exported records that can be corrected. */
+    suspend fun getRecentBuiltinWorkoutSummaries(limit: Int): List<BuiltinWorkoutSummary>
+
+    /** Re-queues a built-in Workout after its user-selected end time changes. */
+    suspend fun markBuiltinWorkoutPending(workoutId: Long): Int
 
     /** Every accepted PPI/RR interval received from the Time 2 in the given half-open range. */
     suspend fun getBeatToBeatForRange(start: Long, end: Long): List<BeatToBeatEntity>

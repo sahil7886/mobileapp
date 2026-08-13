@@ -10,7 +10,6 @@ import platform.HealthKit.HKAuthorizationStatusNotDetermined
 import platform.HealthKit.HKAuthorizationStatusSharingAuthorized
 import platform.HealthKit.HKAuthorizationStatusSharingDenied
 import platform.HealthKit.HKHealthStore
-import platform.HealthKit.HKMetricPrefixMilli
 import platform.HealthKit.HKObjectType
 import platform.HealthKit.HKQuantity
 import platform.HealthKit.HKQuantitySample
@@ -200,7 +199,7 @@ internal actual class NativeHeartRateExporter {
             endDate = time,
             metadata = mapOf(
                 HK_METADATA_SYNC_IDENTIFIER to sample.syncIdentifier,
-                HK_METADATA_SYNC_VERSION to SYNC_VERSION,
+                HK_METADATA_SYNC_VERSION to sample.syncVersion,
                 HK_METADATA_WAS_USER_ENTERED to false,
                 HK_METADATA_EXTERNAL_UUID to sample.syncIdentifier,
                 METADATA_PEBBLE_SEQUENCE to sample.sourceRecordId,
@@ -214,7 +213,7 @@ internal actual class NativeHeartRateExporter {
         return HKQuantitySample.quantitySampleWithType(
             quantityType = type,
             quantity = HKQuantity.quantityWithUnit(
-                unit = HKUnit.secondUnitWithMetricPrefix(HKMetricPrefixMilli),
+                unit = HKUnit.unitFromString("ms"),
                 doubleValue = sample.sdnnMilliseconds,
             ),
             startDate = Instant.fromEpochSeconds(sample.windowStartEpochSeconds).toNSDate(),
@@ -261,7 +260,7 @@ internal actual class NativeHeartRateExporter {
             builder.addMetadata(
                 metadata = mapOf(
                     HK_METADATA_SYNC_IDENTIFIER to workout.syncIdentifier,
-                    HK_METADATA_SYNC_VERSION to SYNC_VERSION,
+                    HK_METADATA_SYNC_VERSION to workout.syncVersion,
                     HK_METADATA_WAS_USER_ENTERED to false,
                     HK_METADATA_EXTERNAL_UUID to workout.syncIdentifier,
                     METADATA_PEBBLE_WORKOUT_ID to workout.sourceRecordId,

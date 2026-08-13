@@ -12,6 +12,16 @@ import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import kotlinx.coroutines.flow.Flow
 
+/** A locally retained built-in Workout, including records already sent to Apple Health. */
+data class BuiltinWorkoutSummary(
+    val workoutId: Long,
+    val firstSampleEpochSeconds: Long,
+    val lastSampleEpochSeconds: Long,
+    val terminalEpochSeconds: Long,
+    val recordCount: Int,
+    val pendingRecordCount: Int,
+)
+
 @Dao
 interface HealthDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -144,6 +154,35 @@ interface HealthDao {
         WHERE exportedToAppleHealth = 0 AND filteredBpm BETWEEN 1 AND 300
         """)
     suspend fun countPendingGranularHeartRate(): Int
+
+    /**
+     * Recent Time 2 built-in Workouts. These stay visible after export so the user can correct
+     * an end time that was recorded after they had actually stopped exercising.
+     */
+    @Query("""
+        SELECT workoutId,
+               MIN(timestampEpochSeconds) AS firstSampleEpochSeconds,
+               MAX(timestampEpochSeconds) AS lastSampleEpochSeconds,
+               MAX(CASE WHEN (flags & 2) != 0 THEN timestampEpochSeconds ELSE 0 END)
+                   AS terminalEpochSeconds,
+               COUNT(*) AS recordCount,
+               SUM(CASE WHEN exportedToAppleHealth = 0 THEN 1 ELSE 0 END)
+                   AS pendingRecordCount
+        FROM granular_heart_rate
+        WHERE recordId LIKE 'builtin-workout-v1:%'
+        GROUP BY workoutId
+        ORDER BY MAX(timestampEpochSeconds) DESC
+        LIMIT :limit
+        """)
+    suspend fun getRecentBuiltinWorkoutSummaries(limit: Int): List<BuiltinWorkoutSummary>
+
+    /** Makes a previously exported workout eligible for a corrected HealthKit export. */
+    @Query("""
+        UPDATE granular_heart_rate
+        SET exportedToAppleHealth = 0
+        WHERE workoutId = :workoutId AND recordId LIKE 'builtin-workout-v1:%'
+        """)
+    suspend fun markBuiltinWorkoutPending(workoutId: Long): Int
 
     @Query("SELECT * FROM health_data WHERE timestamp >= :start AND timestamp <= :end ORDER BY timestamp ASC")
     fun getHealthData(start: Long, end: Long): Flow<List<HealthDataEntity>>

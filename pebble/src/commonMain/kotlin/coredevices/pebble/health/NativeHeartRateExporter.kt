@@ -12,11 +12,14 @@ data class HeartRateExportSample(
     val beatsPerMinute: Int,
     /** Stable source identity; minute health records retain their historic timestamp-only value. */
     val sourceRecordId: String = timestampSeconds.toString(),
+    /** Increments only when this exact logical sample needs to replace an earlier export. */
+    val syncVersion: Int = 1,
 ) {
     init {
         require(timestampSeconds > 0) { "Heart-rate timestamp must be positive" }
         require(beatsPerMinute in 1..300) { "Heart rate must be between 1 and 300 bpm" }
         require(sourceRecordId.isNotBlank()) { "Heart-rate source record ID must not be blank" }
+        require(syncVersion >= 1) { "Heart-rate sync version must be positive" }
     }
 
     val syncIdentifier: String
@@ -54,6 +57,8 @@ data class WorkoutHeartRateExport(
     val startEpochSeconds: Long,
     val endEpochSeconds: Long,
     val heartRateSamples: List<HeartRateExportSample>,
+    /** HealthKit replaces an earlier workout with the same identity when this version rises. */
+    val syncVersion: Int = 1,
 ) {
     init {
         require(sourceRecordId.isNotBlank())
@@ -62,6 +67,7 @@ data class WorkoutHeartRateExport(
         require(heartRateSamples.all {
             it.timestampSeconds in startEpochSeconds..endEpochSeconds
         }) { "Workout heart-rate samples must be within the workout bounds" }
+        require(syncVersion >= 1) { "Workout sync version must be positive" }
     }
 
     val syncIdentifier: String

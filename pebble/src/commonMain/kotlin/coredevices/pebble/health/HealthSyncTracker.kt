@@ -45,6 +45,9 @@ class HealthSyncTracker(private val settings: Settings) {
         private const val KEY_FAILED_HEART_RATE_RECORDS = "health_sync_failed_heart_rate_records"
         private const val KEY_FAILED_OVERNIGHT_HRV_RECORDS = "health_sync_failed_overnight_hrv_records"
         private const val KEY_LAST_ERROR = "health_sync_last_error"
+        private const val KEY_WORKOUT_END_OVERRIDE_PREFIX = "health_sync_workout_end_override_"
+        private const val KEY_WORKOUT_EXPORT_VERSION_PREFIX = "health_sync_workout_export_version_"
+        private const val KEY_NATIVE_WORKOUT_EXPORTED_PREFIX = "health_sync_native_workout_exported_"
     }
 
     private val _enabled = MutableStateFlow<Boolean>(settings.getBoolean(KEY_ENABLED, false))
@@ -78,6 +81,32 @@ class HealthSyncTracker(private val settings: Settings) {
             settings[KEY_LAST_SYNCED_OVERLAY] = value
             publish()
         }
+
+    fun workoutEndOverride(workoutId: Long): Long? =
+        settings.getLong("$KEY_WORKOUT_END_OVERRIDE_PREFIX$workoutId", 0L).takeIf { it > workoutId }
+
+    /**
+     * Stores a user correction separately from the raw watch records. Bumping the HealthKit
+     * sync version replaces this app's earlier copy of the workout instead of duplicating it.
+     */
+    fun setWorkoutEndOverride(workoutId: Long, endEpochSeconds: Long) {
+        require(endEpochSeconds > workoutId)
+        val endKey = "$KEY_WORKOUT_END_OVERRIDE_PREFIX$workoutId"
+        if (settings.getLong(endKey, 0L) == endEpochSeconds) return
+        settings[endKey] = endEpochSeconds
+        val versionKey = "$KEY_WORKOUT_EXPORT_VERSION_PREFIX$workoutId"
+        settings[versionKey] = settings.getInt(versionKey, 1) + 1
+    }
+
+    fun workoutExportVersion(workoutId: Long): Int =
+        settings.getInt("$KEY_WORKOUT_EXPORT_VERSION_PREFIX$workoutId", 1)
+
+    fun hasNativeWorkoutExport(workoutId: Long): Boolean =
+        settings.getBoolean("$KEY_NATIVE_WORKOUT_EXPORTED_PREFIX$workoutId", false)
+
+    fun markNativeWorkoutExported(workoutId: Long) {
+        settings["$KEY_NATIVE_WORKOUT_EXPORTED_PREFIX$workoutId"] = true
+    }
 
     fun updateExportStatus(
         healthPlatformAvailable: Boolean = _status.value.healthPlatformAvailable,
