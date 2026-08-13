@@ -503,7 +503,6 @@ class PlatformHealthSync(
             .firstOrNull {
                 it.startTime == workoutId && it.type in BUILTIN_WORKOUT_OVERLAY_TYPES
             }
-        if (overlay == null && tracker.workoutEndOverride(workoutId) == null) return false
         if (recordedEndEpochSeconds <= workoutId) return false
         val end = resolveBuiltinWorkoutEnd(
             workoutId = workoutId,
@@ -866,6 +865,7 @@ internal enum class BuiltinWorkoutEndSource(val logName: String) {
     UserCorrection("user-correction"),
     TerminalRecord("terminal-record"),
     ActivitySession("activity-session-recovery"),
+    FinalHeartRateSample("final-heart-rate-sample-recovery"),
 }
 
 internal data class BuiltinWorkoutEnd(
@@ -876,8 +876,9 @@ internal data class BuiltinWorkoutEnd(
 /**
  * A detailed stream should normally have a terminal record from the watch firmware. Older
  * firmware occasionally lost that final packet after the ActivitySession had already been
- * persisted, so recover only from that matching session rather than guessing from the final HR
- * sample. A user correction is always the explicit, highest-priority choice.
+ * persisted. Prefer that matching session as recovery, but if it is unavailable, use the final
+ * received HR sample to close and release the otherwise permanently-pending stream. A user
+ * correction is always the explicit, highest-priority choice.
  */
 internal fun resolveBuiltinWorkoutEnd(
     workoutId: Long,
@@ -900,8 +901,15 @@ internal fun resolveBuiltinWorkoutEnd(
         ?.takeIf { it > 0 }
         ?.let { workoutId + it }
         ?.takeIf { it > workoutId && it <= recordedEndEpochSeconds }
-        ?: return null
-    return BuiltinWorkoutEnd(activitySessionEnd, BuiltinWorkoutEndSource.ActivitySession)
+    if (activitySessionEnd != null) {
+        return BuiltinWorkoutEnd(activitySessionEnd, BuiltinWorkoutEndSource.ActivitySession)
+    }
+
+    // Export filters samples with `< end`, so advance by one second to retain the final sample.
+    return BuiltinWorkoutEnd(
+        recordedEndEpochSeconds + 1,
+        BuiltinWorkoutEndSource.FinalHeartRateSample,
+    )
 }
 
 // Pebble's overlay model: Sleep/Nap are container overlays spanning the whole session with

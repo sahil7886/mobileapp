@@ -4,7 +4,6 @@ import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
 import io.rebble.libpebblecommon.health.OverlayType
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class PlatformHealthSyncTest {
 
@@ -40,8 +39,12 @@ class PlatformHealthSyncTest {
     }
 
     @Test
-    fun missingCompletionMarker_doesNotGuessFromFinalHeartRateSample() {
-        assertNull(
+    fun finalHeartRateSample_recoversWhenNoOtherCompletionSourceExists() {
+        assertEquals(
+            BuiltinWorkoutEnd(
+                epochSeconds = 1_000 + 90 * 60 + 1,
+                source = BuiltinWorkoutEndSource.FinalHeartRateSample,
+            ),
             resolveBuiltinWorkoutEnd(
                 workoutId = 1_000,
                 recordedEndEpochSeconds = 1_000 + 90 * 60,
