@@ -48,6 +48,8 @@ class HealthSyncTracker(private val settings: Settings) {
         private const val KEY_WORKOUT_END_OVERRIDE_PREFIX = "health_sync_workout_end_override_"
         private const val KEY_WORKOUT_EXPORT_VERSION_PREFIX = "health_sync_workout_export_version_"
         private const val KEY_NATIVE_WORKOUT_EXPORTED_PREFIX = "health_sync_native_workout_exported_"
+        private const val KEY_LEGACY_SLEEP_CAPTURE_RECOVERY_CUTOFF =
+            "health_sync_legacy_sleep_capture_recovery_cutoff"
     }
 
     private val _enabled = MutableStateFlow<Boolean>(settings.getBoolean(KEY_ENABLED, false))
@@ -106,6 +108,18 @@ class HealthSyncTracker(private val settings: Settings) {
 
     fun markNativeWorkoutExported(workoutId: Long) {
         settings["$KEY_NATIVE_WORKOUT_EXPORTED_PREFIX$workoutId"] = true
+    }
+
+    /**
+     * Claims the one-time boundary for recovering streams produced by firmware that could lose
+     * their terminal DataLogging marker. Only records already on the phone before this app build
+     * are eligible, so an active or future sleep capture can never be completed speculatively.
+     */
+    fun claimLegacySleepCaptureRecoveryCutoff(nowEpochSeconds: Long): Long? {
+        require(nowEpochSeconds > 0)
+        if (settings.getLong(KEY_LEGACY_SLEEP_CAPTURE_RECOVERY_CUTOFF, 0L) != 0L) return null
+        settings[KEY_LEGACY_SLEEP_CAPTURE_RECOVERY_CUTOFF] = nowEpochSeconds
+        return nowEpochSeconds
     }
 
     fun updateExportStatus(

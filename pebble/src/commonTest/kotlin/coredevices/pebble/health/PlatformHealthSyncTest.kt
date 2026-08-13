@@ -1,6 +1,8 @@
 package coredevices.pebble.health
 
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
+import io.rebble.libpebblecommon.datalogging.SleepCaptureProtocol
 import io.rebble.libpebblecommon.health.OverlayType
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -51,6 +53,65 @@ class PlatformHealthSyncTest {
                 terminalEndEpochSeconds = null,
                 correctionEndEpochSeconds = null,
                 activitySessionDurationSeconds = null,
+            ),
+        )
+    }
+
+    @Test
+    fun gapFreeLegacySleepCapture_recoversCompletionAfterFinalPpi() {
+        val markers = legacySleepCaptureCompletionMarkers(
+            samples = listOf(
+                sleepCapture(sequence = 0, timestamp = 100, type = SleepCaptureProtocol.TYPE_SESSION),
+                sleepCapture(sequence = 1, timestamp = 101, type = SleepCaptureProtocol.TYPE_PPI, value = 900),
+                sleepCapture(sequence = 2, timestamp = 102, type = SleepCaptureProtocol.TYPE_PPI, value = 920),
+            ),
+            receivedBeforeEpochSeconds = 200,
+            recoveredAtEpochSeconds = 300,
+        )
+
+        assertEquals(1, markers.size)
+        assertEquals(3, markers.single().sequence)
+        assertEquals(103, markers.single().timestampEpochSeconds)
+        assertEquals(SleepCaptureProtocol.FLAG_COMPLETE, markers.single().flags)
+    }
+
+    @Test
+    fun legacySleepCaptureWithSequenceGap_isNotRecovered() {
+        assertEquals(
+            emptyList(),
+            legacySleepCaptureCompletionMarkers(
+                samples = listOf(
+                    sleepCapture(sequence = 0, timestamp = 100, type = SleepCaptureProtocol.TYPE_SESSION),
+                    sleepCapture(sequence = 2, timestamp = 102, type = SleepCaptureProtocol.TYPE_PPI, value = 920),
+                ),
+                receivedBeforeEpochSeconds = 200,
+                recoveredAtEpochSeconds = 300,
+            ),
+        )
+    }
+
+    @Test
+    fun sleepCaptureReceivedAfterRecoveryBoundary_isNotRecovered() {
+        assertEquals(
+            emptyList(),
+            legacySleepCaptureCompletionMarkers(
+                samples = listOf(
+                    sleepCapture(
+                        sequence = 0,
+                        timestamp = 100,
+                        type = SleepCaptureProtocol.TYPE_SESSION,
+                        receivedAt = 201,
+                    ),
+                    sleepCapture(
+                        sequence = 1,
+                        timestamp = 101,
+                        type = SleepCaptureProtocol.TYPE_PPI,
+                        value = 900,
+                        receivedAt = 201,
+                    ),
+                ),
+                receivedBeforeEpochSeconds = 200,
+                recoveredAtEpochSeconds = 300,
             ),
         )
     }
@@ -158,3 +219,21 @@ private fun overlay(start: Long, duration: Long, type: OverlayType) = OverlayDat
 
 private fun light(start: Long, end: Long) = SleepStageInterval(start, end, isDeep = false)
 private fun deep(start: Long, end: Long) = SleepStageInterval(start, end, isDeep = true)
+
+private fun sleepCapture(
+    sequence: Long,
+    timestamp: Long,
+    type: Int,
+    value: Int = 0,
+    receivedAt: Long = 150,
+): SleepCaptureSampleEntity = SleepCaptureSampleEntity(
+    recordId = "test:$sequence",
+    sessionId = 42,
+    sequence = sequence,
+    timestampEpochSeconds = timestamp,
+    value = value,
+    quality = if (type == SleepCaptureProtocol.TYPE_PPI) 4 else -128,
+    sampleType = type,
+    flags = 0,
+    receivedAtEpochSeconds = receivedAt,
+)

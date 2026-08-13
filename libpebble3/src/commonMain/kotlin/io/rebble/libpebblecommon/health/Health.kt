@@ -222,6 +222,9 @@ class Health(
         end: Long,
     ): List<SleepCaptureSampleEntity> = healthDao.getSleepCaptureSamplesForRange(start, end)
 
+    override suspend fun insertSleepCaptureSamples(data: List<SleepCaptureSampleEntity>): Int =
+        if (data.isEmpty()) 0 else healthDao.insertSleepCaptureSamples(data).count { it != -1L }
+
     override suspend fun countSleepCaptureSamples(): Int = healthDao.countSleepCaptureSamples()
 
     override suspend fun getCompletedSleepCaptureSessionIdsWithoutHrv(

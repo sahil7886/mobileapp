@@ -188,6 +188,9 @@ interface HealthDataApi {
     /** Raw PPI, BPM/quality and 30-second motion inputs from overnight system capture. */
     suspend fun getSleepCaptureSamplesForRange(start: Long, end: Long): List<SleepCaptureSampleEntity>
 
+    /** Durably retains raw sleep-capture data or a locally synthesized recovery marker. */
+    suspend fun insertSleepCaptureSamples(data: List<SleepCaptureSampleEntity>): Int
+
     /** Number of raw overnight classifier-input records retained locally. */
     suspend fun countSleepCaptureSamples(): Int
 

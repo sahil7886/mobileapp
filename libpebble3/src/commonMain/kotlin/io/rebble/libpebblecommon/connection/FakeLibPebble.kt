@@ -504,6 +504,8 @@ class FakeLibPebble : LibPebble {
         end: Long,
     ): List<SleepCaptureSampleEntity> = emptyList()
 
+    override suspend fun insertSleepCaptureSamples(data: List<SleepCaptureSampleEntity>): Int = data.size
+
     override suspend fun countSleepCaptureSamples(): Int = 0
 
     override suspend fun getCompletedSleepCaptureSessionIdsWithoutHrv(algorithmVersion: Int): List<Long> =

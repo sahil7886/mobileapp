@@ -19,6 +19,8 @@ import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
 import io.rebble.libpebblecommon.database.entity.OvernightHrvEntity
 import io.rebble.libpebblecommon.datalogging.BuiltinWorkoutHeartRateProtocol
+import io.rebble.libpebblecommon.datalogging.SleepCaptureProtocol
+import io.rebble.libpebblecommon.database.entity.SleepCaptureSampleEntity
 import io.rebble.libpebblecommon.health.OverlayType
 import io.rebble.libpebblecommon.health.OvernightHrvCalculator
 import kotlinx.coroutines.CoroutineScope
@@ -251,6 +253,7 @@ class PlatformHealthSync(
      * diagnostics; it is never presented to HealthKit as HRV.
      */
     private suspend fun syncOvernightHrv() {
+        recoverLegacySleepCaptureCompletionMarkers()
         val uncalculatedSessions = healthDataApi.getCompletedSleepCaptureSessionIdsWithoutHrv(
             OvernightHrvCalculator.ALGORITHM_VERSION,
         )
@@ -322,6 +325,26 @@ class PlatformHealthSync(
                 },
             )
             batches++
+        }
+    }
+
+    /**
+     * Repairs only data that pre-dates this companion build. The old sleep-capture firmware could
+     * close a buffered DataLogging stream before its final COMPLETE item reached flash. A stream
+     * is recoverable only when every sequence number is present, so no dropped raw data is ever
+     * promoted to a HealthKit HRV calculation.
+     */
+    private suspend fun recoverLegacySleepCaptureCompletionMarkers() {
+        val now = Clock.System.now().epochSeconds
+        val receivedBefore = tracker.claimLegacySleepCaptureRecoveryCutoff(now) ?: return
+        val markers = legacySleepCaptureCompletionMarkers(
+            samples = healthDataApi.getSleepCaptureSamplesForRange(0, receivedBefore + 1),
+            receivedBeforeEpochSeconds = receivedBefore,
+            recoveredAtEpochSeconds = now,
+        )
+        val inserted = healthDataApi.insertSleepCaptureSamples(markers)
+        logger.d {
+            "HEALTH_HRV_RECOVERY candidates=${markers.size} inserted=$inserted cutoff=$receivedBefore"
         }
     }
 
@@ -911,6 +934,66 @@ internal fun resolveBuiltinWorkoutEnd(
         BuiltinWorkoutEndSource.FinalHeartRateSample,
     )
 }
+
+/**
+ * Reconstructs a terminal marker for the one historical firmware failure mode: a complete,
+ * gap-free stream that reached the phone but lost its final DataLogging record. The one-time
+ * received-at boundary is supplied by [HealthSyncTracker], not inferred from sensor timestamps.
+ */
+internal fun legacySleepCaptureCompletionMarkers(
+    samples: List<SleepCaptureSampleEntity>,
+    receivedBeforeEpochSeconds: Long,
+    recoveredAtEpochSeconds: Long,
+): List<SleepCaptureSampleEntity> = samples
+    .groupBy { it.sessionId }
+    .values
+    .mapNotNull { session ->
+        if (session.maxOf { it.receivedAtEpochSeconds } > receivedBeforeEpochSeconds) return@mapNotNull null
+        if (session.any { it.flags and SleepCaptureProtocol.FLAG_DROPPED != 0 }) return@mapNotNull null
+        if (session.any {
+                it.sampleType == SleepCaptureProtocol.TYPE_SESSION &&
+                    it.flags and SleepCaptureProtocol.FLAG_COMPLETE != 0
+            }
+        ) {
+            return@mapNotNull null
+        }
+
+        val maxSequence = session.maxOfOrNull { it.sequence } ?: return@mapNotNull null
+        val nextSequence = maxSequence + 1
+        if (
+            nextSequence > UShort.MAX_VALUE.toLong() ||
+            session.size.toLong() != nextSequence ||
+            session.map { it.sequence }.toSet().size != session.size
+        ) {
+            return@mapNotNull null
+        }
+        if (session.none {
+                it.sequence == 0L &&
+                    it.sampleType == SleepCaptureProtocol.TYPE_SESSION &&
+                    it.flags == 0
+            }
+        ) {
+            return@mapNotNull null
+        }
+
+        val lastPpi = session.asSequence()
+            .filter { it.sampleType == SleepCaptureProtocol.TYPE_PPI }
+            .maxWithOrNull(compareBy<SleepCaptureSampleEntity>({ it.timestampEpochSeconds }, { it.sequence }))
+            ?: return@mapNotNull null
+        SleepCaptureSampleEntity(
+            recordId = "sleep-capture-recovery-v1:${lastPpi.sessionId}:$nextSequence",
+            sessionId = lastPpi.sessionId,
+            sequence = nextSequence,
+            // The HRV window is half-open. Keep the final accepted PPI in-range while making the
+            // recovered terminal record unambiguously later than that heartbeat.
+            timestampEpochSeconds = lastPpi.timestampEpochSeconds + 1,
+            value = 0,
+            quality = -128,
+            sampleType = SleepCaptureProtocol.TYPE_SESSION,
+            flags = SleepCaptureProtocol.FLAG_COMPLETE,
+            receivedAtEpochSeconds = recoveredAtEpochSeconds,
+        )
+    }
 
 // Pebble's overlay model: Sleep/Nap are container overlays spanning the whole session with
 // DeepSleep/DeepNap sub-overlays nested inside them. Carve the Deep periods out of each Light
