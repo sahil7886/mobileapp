@@ -4,6 +4,7 @@ import io.rebble.libpebblecommon.database.entity.OverlayDataEntity
 import io.rebble.libpebblecommon.health.OverlayType
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class PlatformHealthSyncTest {
 
@@ -17,6 +18,36 @@ class PlatformHealthSyncTest {
             prioritizeBuiltinWorkoutExports(
                 workoutIds = listOf(olderIncompleteWorkout, correctedLaterWorkout),
                 hasEndCorrection = { it == correctedLaterWorkout },
+            ),
+        )
+    }
+
+    @Test
+    fun activitySession_recoversMissingCompletionMarker() {
+        assertEquals(
+            BuiltinWorkoutEnd(
+                epochSeconds = 1_000 + 35 * 60,
+                source = BuiltinWorkoutEndSource.ActivitySession,
+            ),
+            resolveBuiltinWorkoutEnd(
+                workoutId = 1_000,
+                recordedEndEpochSeconds = 1_000 + 90 * 60,
+                terminalEndEpochSeconds = null,
+                correctionEndEpochSeconds = null,
+                activitySessionDurationSeconds = 35 * 60,
+            ),
+        )
+    }
+
+    @Test
+    fun missingCompletionMarker_doesNotGuessFromFinalHeartRateSample() {
+        assertNull(
+            resolveBuiltinWorkoutEnd(
+                workoutId = 1_000,
+                recordedEndEpochSeconds = 1_000 + 90 * 60,
+                terminalEndEpochSeconds = null,
+                correctionEndEpochSeconds = null,
+                activitySessionDurationSeconds = null,
             ),
         )
     }

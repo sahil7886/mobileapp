@@ -505,11 +505,14 @@ class PlatformHealthSync(
             }
         if (overlay == null && tracker.workoutEndOverride(workoutId) == null) return false
         if (recordedEndEpochSeconds <= workoutId) return false
-        val endEpochSeconds = tracker.workoutEndOverride(workoutId)
-            ?.takeIf { it <= recordedEndEpochSeconds }
-            ?: terminal?.timestampEpochSeconds
-            ?: return false
-        if (endEpochSeconds <= workoutId) return false
+        val end = resolveBuiltinWorkoutEnd(
+            workoutId = workoutId,
+            recordedEndEpochSeconds = recordedEndEpochSeconds,
+            terminalEndEpochSeconds = terminal?.timestampEpochSeconds,
+            correctionEndEpochSeconds = tracker.workoutEndOverride(workoutId),
+            activitySessionDurationSeconds = overlay?.duration,
+        ) ?: return false
+        val endEpochSeconds = end.epochSeconds
 
         val samples = detail
             .asSequence()
@@ -550,7 +553,7 @@ class PlatformHealthSync(
             tracker.recordSuccessfulHeartRateExport(endEpochSeconds)
             logger.w {
                 "HEALTH_EXPORT_BUILTIN_WORKOUT fallback standalone-HR saved=" +
-                    "${written.writtenRecords} workout=$workoutId"
+                    "${written.writtenRecords} workout=$workoutId completion=${end.source.logName}"
             }
             return true
         }
@@ -592,7 +595,7 @@ class PlatformHealthSync(
                 tracker.markNativeWorkoutExported(workoutId)
                 logger.d {
                     "HEALTH_EXPORT_BUILTIN_WORKOUT saved=${written.writtenHeartRateRecords} " +
-                    "workout=$workoutId end=$endEpochSeconds"
+                    "workout=$workoutId end=$endEpochSeconds completion=${end.source.logName}"
                 }
                 true
             },
@@ -654,8 +657,11 @@ class PlatformHealthSync(
                     it.workoutId == overlay.startTime &&
                         BuiltinWorkoutHeartRateProtocol.isBuiltinWorkoutRecord(it.recordId)
                 }
-                detail.hasCompletedExportableBuiltinWorkout() ||
-                    tracker.workoutEndOverride(overlay.startTime) != null
+                detail.hasExportableBuiltinWorkout(
+                    workoutId = overlay.startTime,
+                    activitySessionDurationSeconds = overlay.duration,
+                    correctionEndEpochSeconds = tracker.workoutEndOverride(overlay.startTime),
+                )
             }
         } else {
             emptyList()
@@ -749,9 +755,24 @@ class PlatformHealthSync(
     }
 
     private fun List<io.rebble.libpebblecommon.database.entity.GranularHeartRateEntity>
-        .hasCompletedExportableBuiltinWorkout(): Boolean =
-        any { it.filteredBpm in 1..300 } &&
-            any { it.flags and BuiltinWorkoutHeartRateProtocol.FLAG_WORKOUT_COMPLETE != 0 }
+        .hasExportableBuiltinWorkout(
+            workoutId: Long,
+            activitySessionDurationSeconds: Long,
+            correctionEndEpochSeconds: Long?,
+        ): Boolean {
+        if (none { it.filteredBpm in 1..300 }) return false
+        val terminalEnd = filter {
+            it.flags and BuiltinWorkoutHeartRateProtocol.FLAG_WORKOUT_COMPLETE != 0
+        }.maxOfOrNull { it.timestampEpochSeconds }
+        val recordedEnd = terminalEnd ?: maxOfOrNull { it.timestampEpochSeconds } ?: return false
+        return resolveBuiltinWorkoutEnd(
+            workoutId = workoutId,
+            recordedEndEpochSeconds = recordedEnd,
+            terminalEndEpochSeconds = terminalEnd,
+            correctionEndEpochSeconds = correctionEndEpochSeconds,
+            activitySessionDurationSeconds = activitySessionDurationSeconds,
+        ) != null
+    }
 
     private fun buildSleepSessions(overlays: List<OverlayDataEntity>): List<SleepSessionRecord> {
         if (overlays.isEmpty()) return emptyList()
@@ -839,6 +860,49 @@ internal fun prioritizeBuiltinWorkoutExports(
 ): List<Long> = workoutIds.sortedWith(
     compareByDescending<Long> { hasEndCorrection(it) }.thenBy { it },
 )
+
+/** The trusted source for an export's finish boundary. */
+internal enum class BuiltinWorkoutEndSource(val logName: String) {
+    UserCorrection("user-correction"),
+    TerminalRecord("terminal-record"),
+    ActivitySession("activity-session-recovery"),
+}
+
+internal data class BuiltinWorkoutEnd(
+    val epochSeconds: Long,
+    val source: BuiltinWorkoutEndSource,
+)
+
+/**
+ * A detailed stream should normally have a terminal record from the watch firmware. Older
+ * firmware occasionally lost that final packet after the ActivitySession had already been
+ * persisted, so recover only from that matching session rather than guessing from the final HR
+ * sample. A user correction is always the explicit, highest-priority choice.
+ */
+internal fun resolveBuiltinWorkoutEnd(
+    workoutId: Long,
+    recordedEndEpochSeconds: Long,
+    terminalEndEpochSeconds: Long?,
+    correctionEndEpochSeconds: Long?,
+    activitySessionDurationSeconds: Long?,
+): BuiltinWorkoutEnd? {
+    if (recordedEndEpochSeconds <= workoutId) return null
+
+    correctionEndEpochSeconds
+        ?.takeIf { it > workoutId && it <= recordedEndEpochSeconds }
+        ?.let { return BuiltinWorkoutEnd(it, BuiltinWorkoutEndSource.UserCorrection) }
+
+    terminalEndEpochSeconds
+        ?.takeIf { it > workoutId }
+        ?.let { return BuiltinWorkoutEnd(it, BuiltinWorkoutEndSource.TerminalRecord) }
+
+    val activitySessionEnd = activitySessionDurationSeconds
+        ?.takeIf { it > 0 }
+        ?.let { workoutId + it }
+        ?.takeIf { it > workoutId && it <= recordedEndEpochSeconds }
+        ?: return null
+    return BuiltinWorkoutEnd(activitySessionEnd, BuiltinWorkoutEndSource.ActivitySession)
+}
 
 // Pebble's overlay model: Sleep/Nap are container overlays spanning the whole session with
 // DeepSleep/DeepNap sub-overlays nested inside them. Carve the Deep periods out of each Light
