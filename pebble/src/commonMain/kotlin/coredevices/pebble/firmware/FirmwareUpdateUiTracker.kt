@@ -62,11 +62,11 @@ class RealFirmwareUpdateUiTracker(
         if (update !is FirmwareUpdateCheckResult.FoundUpdate) {
             return
         }
-        if (update.version.major <= runningFirmwareVersion.major) {
-            // Clear notifications produced by older app versions for a minor or patch release.
+        if (!isNewNotificationRelease(runningFirmwareVersion, update.version)) {
+            // Clear notifications produced by older app versions for a patch-only release.
             removeNotification(identifier.asString)
             logger.d {
-                "Suppressing non-major firmware notification for ${identifier.asString}: " +
+                "Suppressing unchanged firmware release notification for ${identifier.asString}: " +
                     "running=${runningFirmwareVersion.stringVersion}, offered=${update.version.stringVersion}"
             }
             return
@@ -74,7 +74,9 @@ class RealFirmwareUpdateUiTracker(
         if (!notificationGate.shouldNotify(
                 identifier = identifier,
                 runningMajor = runningFirmwareVersion.major,
+                runningMinor = runningFirmwareVersion.minor,
                 updateMajor = update.version.major,
+                updateMinor = update.version.minor,
             )
         ) {
             logger.d {
@@ -84,6 +86,9 @@ class RealFirmwareUpdateUiTracker(
             return
         }
         val notificationKey = identifier.asString.hashCode()
+        // Older app versions could have already delivered duplicate notifications for this watch.
+        // Replace those with the single notification for this release.
+        removeFirmwareUpdateNotification(appContext, notificationKey)
         notifyFirmwareUpdate(
             appContext = appContext,
             title = "PebbleOS update available",
@@ -135,8 +140,9 @@ class RealFirmwareUpdateUiTracker(
  * Decides whether to show a firmware-update notification for one watch.
  *
  * The update screen continues to show all available releases. System notifications are reserved
- * for a change in the major version (for example, v4 to v5), and each advertised major version
- * is recorded in persistent settings so app restarts and changed release notes cannot re-alert.
+ * for a change in the first two version components (for example, v4.34 to v4.35); patch-only
+ * releases do not alert. Each advertised release is recorded in persistent settings so app
+ * restarts and changed release notes cannot re-alert.
  */
 internal class FirmwareUpdateNotificationGate(
     private val settings: Settings,
@@ -144,27 +150,73 @@ internal class FirmwareUpdateNotificationGate(
     fun shouldNotify(
         identifier: PebbleIdentifier,
         runningMajor: Int,
+        runningMinor: Int,
         updateMajor: Int,
+        updateMinor: Int,
     ): Boolean {
-        if (updateMajor <= runningMajor) {
+        if (!isNewNotificationRelease(
+                runningMajor = runningMajor,
+                runningMinor = runningMinor,
+                updateMajor = updateMajor,
+                updateMinor = updateMinor,
+            )
+        ) {
             return false
         }
 
-        val key = "$KEY_LAST_NOTIFIED_MAJOR_PREFIX${identifier.asString}"
-        val lastNotifiedMajor = settings.getInt(key, NO_NOTIFIED_MAJOR)
-        if (updateMajor <= lastNotifiedMajor) {
+        val key = "$KEY_LAST_NOTIFIED_RELEASE_PREFIX${identifier.asString}"
+        val updateRelease = FirmwareNotificationRelease(updateMajor, updateMinor)
+        val lastNotifiedRelease = settings.getString(key, "").toFirmwareNotificationRelease()
+        if (lastNotifiedRelease != null && updateRelease <= lastNotifiedRelease) {
             return false
         }
 
-        settings.putInt(key, updateMajor)
+        settings.putString(key, updateRelease.toString())
         return true
     }
 
     private companion object {
-        const val KEY_LAST_NOTIFIED_MAJOR_PREFIX = "FIRMWARE_LAST_NOTIFIED_MAJOR_"
-        const val NO_NOTIFIED_MAJOR = -1
+        const val KEY_LAST_NOTIFIED_RELEASE_PREFIX = "FIRMWARE_LAST_NOTIFIED_RELEASE_"
     }
 }
+
+private data class FirmwareNotificationRelease(
+    val major: Int,
+    val minor: Int,
+) : Comparable<FirmwareNotificationRelease> {
+    override fun compareTo(other: FirmwareNotificationRelease): Int =
+        if (major != other.major) major.compareTo(other.major) else minor.compareTo(other.minor)
+
+    override fun toString(): String = "$major.$minor"
+}
+
+private fun String.toFirmwareNotificationRelease(): FirmwareNotificationRelease? {
+    val parts = split('.', limit = 2)
+    if (parts.size != 2) {
+        return null
+    }
+    val major = parts[0].toIntOrNull() ?: return null
+    val minor = parts[1].toIntOrNull() ?: return null
+    return FirmwareNotificationRelease(major, minor)
+}
+
+internal fun isNewNotificationRelease(
+    runningFirmwareVersion: FirmwareVersion,
+    updateFirmwareVersion: FirmwareVersion,
+): Boolean = isNewNotificationRelease(
+    runningMajor = runningFirmwareVersion.major,
+    runningMinor = runningFirmwareVersion.minor,
+    updateMajor = updateFirmwareVersion.major,
+    updateMinor = updateFirmwareVersion.minor,
+)
+
+private fun isNewNotificationRelease(
+    runningMajor: Int,
+    runningMinor: Int,
+    updateMajor: Int,
+    updateMinor: Int,
+): Boolean = FirmwareNotificationRelease(updateMajor, updateMinor) >
+    FirmwareNotificationRelease(runningMajor, runningMinor)
 
 expect fun notifyFirmwareUpdate(
     appContext: AppContext,
