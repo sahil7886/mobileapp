@@ -62,6 +62,7 @@ import io.rebble.libpebblecommon.connection.FirmwareUpdateCheckResult
 import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.connection.NotificationApps
 import io.rebble.libpebblecommon.connection.PebbleIdentifier
+import io.rebble.libpebblecommon.services.FirmwareVersion
 import io.rebble.libpebblecommon.locker.AppType
 import io.rebble.libpebblecommon.metadata.WatchType
 import io.rebble.libpebblecommon.web.LockerAddResponse
@@ -133,7 +134,8 @@ private fun fakePebbleModule(appContext: AppContext) = module {
         override fun maybeNotifyFirmwareUpdate(
             update: FirmwareUpdateCheckResult,
             identifier: PebbleIdentifier,
-            watchName: String
+            watchName: String,
+            runningFirmwareVersion: FirmwareVersion,
         ) {
         }
 

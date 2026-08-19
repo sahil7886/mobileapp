@@ -41,6 +41,8 @@ actual fun notifyFirmwareUpdate(
 
 actual fun removeFirmwareUpdateNotification(appContext: AppContext, key: Int) {
     val identifier = key.toString()
-    UNUserNotificationCenter.currentNotificationCenter()
-        .removeDeliveredNotificationsWithIdentifiers(listOf(identifier))
+    UNUserNotificationCenter.currentNotificationCenter().apply {
+        removePendingNotificationRequestsWithIdentifiers(listOf(identifier))
+        removeDeliveredNotificationsWithIdentifiers(listOf(identifier))
+    }
 }

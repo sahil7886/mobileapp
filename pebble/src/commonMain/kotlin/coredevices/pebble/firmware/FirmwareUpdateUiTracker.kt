@@ -11,12 +11,18 @@ import kotlin.time.Duration.Companion.hours
 import coredevices.util.CoreConfigFlow
 import io.rebble.libpebblecommon.connection.ConnectedPebble
 import io.rebble.libpebblecommon.connection.LibPebble
+import io.rebble.libpebblecommon.services.FirmwareVersion
 import kotlin.time.Duration.Companion.seconds
 
 interface FirmwareUpdateUiTracker {
     fun didFirmwareUpdateCheckFromUi()
     fun shouldUiUpdateCheck(): Boolean
-    fun maybeNotifyFirmwareUpdate(update: FirmwareUpdateCheckResult, identifier: PebbleIdentifier, watchName: String)
+    fun maybeNotifyFirmwareUpdate(
+        update: FirmwareUpdateCheckResult,
+        identifier: PebbleIdentifier,
+        watchName: String,
+        runningFirmwareVersion: FirmwareVersion,
+    )
     fun firmwareUpdateIsInProgress(identifier: PebbleIdentifier)
     fun updateWatchNow(libPebble: LibPebble, identifier: String)
 }
@@ -29,8 +35,7 @@ class RealFirmwareUpdateUiTracker(
 ) : FirmwareUpdateUiTracker {
     private val logger = Logger.withTag("FirmwareUpdateUiTracker")
     private var lastUiUpdateMs: Long = settings.getLong(KEY_LAST_UI_UPDATE_CHECK_MS, 0)
-    private val haveNotifiedForUpdate = mutableSetOf<Int>()
-    private val activeNotificationKeys = mutableSetOf<Int>()
+    private val notificationGate = FirmwareUpdateNotificationGate(settings)
 
     override fun didFirmwareUpdateCheckFromUi() {
         val nowMs = clock.now().toEpochMilliseconds()
@@ -45,20 +50,40 @@ class RealFirmwareUpdateUiTracker(
         return shouldCheck
     }
 
-    override fun maybeNotifyFirmwareUpdate(update: FirmwareUpdateCheckResult, identifier: PebbleIdentifier, watchName: String) {
+    override fun maybeNotifyFirmwareUpdate(
+        update: FirmwareUpdateCheckResult,
+        identifier: PebbleIdentifier,
+        watchName: String,
+        runningFirmwareVersion: FirmwareVersion,
+    ) {
         if (coreConfigFlow.value.disableFirmwareUpdateNotifications) {
             return
         }
         if (update !is FirmwareUpdateCheckResult.FoundUpdate) {
             return
         }
-        val key = update.hashCode() + identifier.asString.hashCode()
-        if (haveNotifiedForUpdate.contains(key)) {
+        if (update.version.major <= runningFirmwareVersion.major) {
+            // Clear notifications produced by older app versions for a minor or patch release.
+            removeNotification(identifier.asString)
+            logger.d {
+                "Suppressing non-major firmware notification for ${identifier.asString}: " +
+                    "running=${runningFirmwareVersion.stringVersion}, offered=${update.version.stringVersion}"
+            }
             return
         }
-        haveNotifiedForUpdate.add(key)
+        if (!notificationGate.shouldNotify(
+                identifier = identifier,
+                runningMajor = runningFirmwareVersion.major,
+                updateMajor = update.version.major,
+            )
+        ) {
+            logger.d {
+                "Suppressing already-notified firmware release for ${identifier.asString}: " +
+                    "running=${runningFirmwareVersion.stringVersion}, offered=${update.version.stringVersion}"
+            }
+            return
+        }
         val notificationKey = identifier.asString.hashCode()
-        activeNotificationKeys.add(notificationKey)
         notifyFirmwareUpdate(
             appContext = appContext,
             title = "PebbleOS update available",
@@ -75,10 +100,7 @@ class RealFirmwareUpdateUiTracker(
 
     private fun removeNotification(identifier: String) {
         val notificationKey = identifier.hashCode()
-        if (activeNotificationKeys.contains(notificationKey)) {
-            removeFirmwareUpdateNotification(appContext, notificationKey)
-            activeNotificationKeys.remove(notificationKey)
-        }
+        removeFirmwareUpdateNotification(appContext, notificationKey)
     }
 
     override fun updateWatchNow(libPebble: LibPebble, identifier: String) {
@@ -106,6 +128,41 @@ class RealFirmwareUpdateUiTracker(
     companion object {
         private const val KEY_LAST_UI_UPDATE_CHECK_MS = "LAST_UI_UPDATE_CHECK_MS"
         private val UI_UPDATE_CHECK_AGAIN_TIME = 1.hours
+    }
+}
+
+/**
+ * Decides whether to show a firmware-update notification for one watch.
+ *
+ * The update screen continues to show all available releases. System notifications are reserved
+ * for a change in the major version (for example, v4 to v5), and each advertised major version
+ * is recorded in persistent settings so app restarts and changed release notes cannot re-alert.
+ */
+internal class FirmwareUpdateNotificationGate(
+    private val settings: Settings,
+) {
+    fun shouldNotify(
+        identifier: PebbleIdentifier,
+        runningMajor: Int,
+        updateMajor: Int,
+    ): Boolean {
+        if (updateMajor <= runningMajor) {
+            return false
+        }
+
+        val key = "$KEY_LAST_NOTIFIED_MAJOR_PREFIX${identifier.asString}"
+        val lastNotifiedMajor = settings.getInt(key, NO_NOTIFIED_MAJOR)
+        if (updateMajor <= lastNotifiedMajor) {
+            return false
+        }
+
+        settings.putInt(key, updateMajor)
+        return true
+    }
+
+    private companion object {
+        const val KEY_LAST_NOTIFIED_MAJOR_PREFIX = "FIRMWARE_LAST_NOTIFIED_MAJOR_"
+        const val NO_NOTIFIED_MAJOR = -1
     }
 }
 
