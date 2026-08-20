@@ -1352,7 +1352,13 @@ fun WatchMenu(watch: PebbleDevice, navBarNav: NavBarNav) {
                         },
                         onClick = {
                             showMenu = false
-                            navBarNav.navigateTo(PebbleNavBarRoutes.BatterySettingsRoute)
+                            val knownWatch = watch as? KnownPebbleDevice
+                            navBarNav.navigateTo(
+                                PebbleNavBarRoutes.BatterySettingsRoute(
+                                    serial = knownWatch?.serial,
+                                    watchName = knownWatch?.name,
+                                ),
+                            )
                         }
                     )
                 }

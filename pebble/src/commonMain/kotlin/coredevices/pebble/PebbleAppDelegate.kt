@@ -12,6 +12,7 @@ import coredevices.pebble.firmware.BatteryChargedNotifier
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
 import coredevices.pebble.services.AppstoreSourceInitializer
 import coredevices.pebble.services.AnalyticsHeartbeatQueue
+import coredevices.pebble.services.BatteryHistoryRepository
 import coredevices.pebble.services.MemfaultChunkQueue
 import coredevices.pebble.services.PebbleWebServices
 import coredevices.util.AppResumed
@@ -58,6 +59,7 @@ class PebbleAppDelegate(
     private val analyticsHeartbeatQueue: AnalyticsHeartbeatQueue,
     private val pebbleWebServices: PebbleWebServices,
     private val batteryChargedNotifier: BatteryChargedNotifier,
+    private val batteryHistory: BatteryHistoryRepository,
 ) {
     private val logger = Logger.withTag("PebbleAppDelegate")
 
@@ -129,6 +131,7 @@ class PebbleAppDelegate(
                                 watch.name,
                                 watch.batteryLevel,
                             )
+                            watch.batteryLevel?.let { batteryHistory.record(watch.serial, it) }
                         }
                     }
                     watches.groupBy { it.watchType() }.forEach { (watchType, watches) ->

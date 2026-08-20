@@ -220,7 +220,7 @@ enum class Section(val title: String, val icon: ImageVector) {
 }
 
 fun Section.navigatesDirectlyTo(): NavBarRoute? = when (this) {
-    Section.Battery -> PebbleNavBarRoutes.BatterySettingsRoute
+    Section.Battery -> PebbleNavBarRoutes.BatterySettingsRoute()
     else -> null
 }
 

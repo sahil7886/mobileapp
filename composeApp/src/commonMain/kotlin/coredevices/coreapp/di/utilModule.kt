@@ -64,6 +64,7 @@ val utilModule = module {
     single { get<CoreDatabase>().heartsDao() }
     single { get<CoreDatabase>().memfaultChunkDao() }
     single { get<CoreDatabase>().analyticsHeartbeatDao() }
+    single { get<CoreDatabase>().batteryHistoryDao() }
     single { CoreConfigHolder(defaultValue = CoreConfig(), get(), get()) }
     single { CoreConfigFlow(get<CoreConfigHolder>().config) }
     single { ModelManager(get(), get(), getOrNull()) }

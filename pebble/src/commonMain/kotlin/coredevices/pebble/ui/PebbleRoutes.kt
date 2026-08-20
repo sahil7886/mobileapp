@@ -89,7 +89,10 @@ object PebbleNavBarRoutes {
     data object WatchSettingsRoute : NavBarRoute
 
     @Serializable
-    data object BatterySettingsRoute : NavBarRoute
+    data class BatterySettingsRoute(
+        val serial: String? = null,
+        val watchName: String? = null,
+    ) : NavBarRoute
 
     @Serializable
     data object PermissionsRoute : NavBarRoute
@@ -209,7 +212,8 @@ fun NavGraphBuilder.addNavBarRoutes(
         WatchSettingsScreen(nav, topBarParams)
     }
     composableWithAnimations<PebbleNavBarRoutes.BatterySettingsRoute>(viewModel) {
-        BatterySettingsScreen(nav, topBarParams)
+        val route: PebbleNavBarRoutes.BatterySettingsRoute = it.toRoute()
+        BatterySettingsScreen(topBarParams, route.serial, route.watchName)
     }
     composableWithAnimations<PebbleNavBarRoutes.PermissionsRoute>(viewModel) {
         PermissionsScreen(nav, topBarParams)
